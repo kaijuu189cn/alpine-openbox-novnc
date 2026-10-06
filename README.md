@@ -62,7 +62,7 @@ Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC
 ├── .env.example                 # WEB_PORT / CONFIG_DIR 等可调项模板
 ├── scripts/
 │   ├── build.sh                 # 可选构建入口（传 BUILD_DATE + 别名标签）
-│   ├── verify.sh                # 一键验证（默认镜像 29 项，带 wine 时 36 项，自动判断）
+│   ├── verify.sh                # 一键验证（默认镜像 31 项，带 wine 时 38 项，自动判断）
 │   ├── chromium-regression.sh   # Chromium 菜单启动回归
 │   ├── wine-regression.sh       # Wine 回归（仅当镜像里有 wine 时才会被 verify 调用）
 │   ├── vncprobe.py              # VNC 像素探测（数颜色）
@@ -501,7 +501,7 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
 
 实测结果（全新 volume）：
 
-默认镜像 **`alpine:openbox-novnc`**（1.47 GB，不含 wine）——**29/29 通过**，wine 相关的检查自动跳过（`logs/verify-base.log`）：
+默认镜像 **`alpine:openbox-novnc`**（1.47 GB，不含 wine）——**31/31 通过**，wine 相关的检查自动跳过（`logs/verify-base.log`）：
 
 ```
    [ OK ] container is running
@@ -513,6 +513,8 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
    [info] wine is not installed (BUILD_PACKAGES did not ask for it)
    [ OK ] docker cli is absent (removed in v2)
    [ OK ] no wine-specific integration in the image
+   [ OK ] the seeded desktop menu has no Wine entries
+   [ OK ] the wine-era menu is shipped as an upgrade target (menu.xml.v2)
    [ OK ] Openbox menu.xml parses (no libxml2 parser errors)
    [ OK ] openbox theme is Artwiz-boxed
    [ OK ] openbox titleLayout is NLMC (no minimise button)
@@ -538,8 +540,13 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
    [info] wine checks skipped (this image has no wine)
    [ OK ] desktop still paints after the Chromium and Wine tests (623 unique colours)
 
- passed: 29   failed: 0
+ passed: 31   failed: 0
 ```
+
+同一份代码用 `BUILD_PACKAGES=wine` 构建出来（`alpine:openbox-novnc-wine`，2.07 GB）会多跑 7 项 wine 检查——**38/38 通过**（`logs/verify-wine.log`）。
+
+> 这两个数字要在**串行**下测得：并行跑两份验证（或在 stack 重建的同时跑）会让首启 Chromium 超过固定等待时间，检查会误报。`verify.sh` 现在轮询最多 120 秒。
+
 
 同一份代码用 `BUILD_PACKAGES=wine` 构建出来（`alpine:openbox-novnc-wine`，2.07 GB）会多跑 7 项 wine 检查——**36/36 通过**（`logs/verify-wine.log`）。
 

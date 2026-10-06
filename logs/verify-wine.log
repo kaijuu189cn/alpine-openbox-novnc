@@ -12,6 +12,8 @@
    [ OK ] wine is installed (BUILD_PACKAGES asked for it)
    [ OK ] docker cli is absent (removed in v2)
    [ OK ] no wine-specific integration in the image
+   [ OK ] the seeded desktop menu has no Wine entries
+   [ OK ] the wine-era menu is shipped as an upgrade target (menu.xml.v2)
    [ OK ] Openbox menu.xml parses (no libxml2 parser errors)
    [ OK ] openbox theme is Artwiz-boxed
    [ OK ] openbox titleLayout is NLMC (no minimise button)
@@ -29,7 +31,7 @@
    [ OK ] vnc.html loads the adaptive-resize script
    [ OK ] a real browser applied the override (data-webtop-resize=remote)
    [ OK ] ?resize=off still overrides the default (escape hatch works)
-   waiting 40s for Chromium to map a window...
+   waiting up to 120s for Chromium to map a window...
    [ OK ] Chromium opens a real window via the menu launcher
           _NET_WM_NAME(UTF8_STRING) = "about:blank - Chromium"
    [ OK ] desktop resizes on request (SetDesktopSize honoured, after=(1500, 850))
@@ -54,6 +56,6 @@
    [ OK ] desktop still paints after the Chromium and Wine tests (1004 unique colours)
 
 ==============================================
- passed: 36   failed: 0
+ passed: 38   failed: 0
 ==============================================
  Tip: inspect with  docker exec -it wt-v-wine supervisorctl status
