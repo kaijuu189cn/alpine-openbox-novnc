@@ -20,7 +20,7 @@
 #      programs, sees the system fonts, and `wine-webtop notepad` maps a window
 #
 # Also asserted along the way:
-#   * v3 image contract: docker cli ABSENT, wine helpers present, and NO panel
+#   * image contract: docker cli ABSENT, no panel, no wine-specific integration
 #     (tint2 is not installed)
 #   * the Openbox menu file parses (a double hyphen in its XML comment used to
 #     make libxml2 reject it, leaving the root menu empty)
@@ -41,7 +41,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROBE_HOST="${PROBE_HOST:-127.0.0.1}"
 PORT="${PORT:-3140}"
-IMAGE="${IMAGE:-webtop:alpine-openbox-novnc}"
+IMAGE="${IMAGE:-alpine:openbox-novnc}"
 NAME="${NAME:-wt-verify-novnc}"
 
 pass=0; fail=0
@@ -95,13 +95,20 @@ done
 
 # --- 1b. core tools the image promises to ship ---------------------------
 echo "$SERVICES" > /dev/null   # keep shellcheck quiet about the reuse above
-for tool in chromium openbox wine; do
+for tool in chromium openbox; do
   if docker exec "$NAME" sh -c "command -v $tool" > /dev/null 2>&1; then
     ok "core tool '${tool}' is present"
   else
     bad "core tool '${tool}' is MISSING"
   fi
 done
+HAS_WINE=0
+if docker exec "$NAME" sh -c 'command -v wine' > /dev/null 2>&1; then
+  HAS_WINE=1
+  ok "wine is installed (BUILD_PACKAGES asked for it)"
+else
+  echo "   [info] wine is not installed (BUILD_PACKAGES did not ask for it)"
+fi
 
 # --- 1c. image contract: docker cli gone, wine helpers installed ---------
 if docker exec "$NAME" sh -c 'command -v docker' > /dev/null 2>&1; then
@@ -109,13 +116,14 @@ if docker exec "$NAME" sh -c 'command -v docker' > /dev/null 2>&1; then
 else
   ok "docker cli is absent (removed in v2)"
 fi
-for tool in wine-webtop wine-prefix-init; do
-  if docker exec "$NAME" sh -c "command -v $tool" > /dev/null 2>&1; then
-    ok "wine helper '${tool}' is present"
-  else
-    bad "wine helper '${tool}' is MISSING"
-  fi
-done
+# The image has no wine-specific integration any more: no helper scripts, no
+# menu entries, no .exe association. Extra packages (wine included) are used
+# directly, which is what BUILD_PACKAGES is for.
+if docker exec "$NAME" sh -c 'test ! -e /usr/bin/wine-webtop && test ! -e /usr/bin/wine-prefix-init && ! grep -qi wine /defaults/menu.xml'; then
+  ok "no wine-specific integration in the image"
+else
+  bad "wine-specific files are still baked into the image"
+fi
 
 # --- 1d. REGRESSION: the Openbox menu file must actually parse -----------
 # It used to contain a double hyphen inside an XML comment; libxml2 rejects the
@@ -299,65 +307,69 @@ else
   bad "screen went blank after the resize (unique_colours=${COL_RS:-none})"
 fi
 
-# --- 7. REGRESSION: Wine prefix, 64/32-bit loaders, real window ----------
-# Same detached pattern as the Chromium check: the helper survives the exec
-# teardown and the prefix may already have been primed by the Openbox autostart.
-docker cp "$HERE/wine-regression.sh" "$NAME:/tmp/wine-regression.sh" > /dev/null 2>&1
-docker exec "$NAME" chmod 755 /tmp/wine-regression.sh > /dev/null 2>&1
-docker exec "$NAME" rm -f /config/wine-regression.txt > /dev/null 2>&1
-docker exec -d "$NAME" /tmp/wine-regression.sh
+if [ "$HAS_WINE" = "1" ]; then
+  # --- 7. REGRESSION: Wine prefix, 64/32-bit loaders, real window ----------
+  # Same detached pattern as the Chromium check: the helper survives the exec
+  # teardown and the prefix may already have been primed by the Openbox autostart.
+  docker cp "$HERE/wine-regression.sh" "$NAME:/tmp/wine-regression.sh" > /dev/null 2>&1
+  docker exec "$NAME" chmod 755 /tmp/wine-regression.sh > /dev/null 2>&1
+  docker exec "$NAME" rm -f /config/wine-regression.txt > /dev/null 2>&1
+  docker exec -d "$NAME" /tmp/wine-regression.sh
 
-echo "   waiting up to 240s for the Wine prefix, loaders and notepad window..."
-WINE_OUT=""
-for _ in $(seq 1 24); do
-  sleep 10
-  WINE_OUT="$(docker exec "$NAME" cat /config/wine-regression.txt 2>/dev/null)"
-  echo "$WINE_OUT" | grep -q '^window=' && break
-done
+  echo "   waiting up to 240s for the Wine prefix, loaders and notepad window..."
+  WINE_OUT=""
+  for _ in $(seq 1 24); do
+    sleep 10
+    WINE_OUT="$(docker exec "$NAME" cat /config/wine-regression.txt 2>/dev/null)"
+    echo "$WINE_OUT" | grep -q '^window=' && break
+  done
 
-if [ -n "$WINE_OUT" ]; then
-  echo "$WINE_OUT" | sed 's/^/          /'
-fi
+  if [ -n "$WINE_OUT" ]; then
+    echo "$WINE_OUT" | sed 's/^/          /'
+  fi
 
-if echo "$WINE_OUT" | grep -q 'wine_version=wine-'; then
-  ok "wine runs ($(echo "$WINE_OUT" | grep -o 'wine_version=.*' | head -1 | cut -d= -f2))"
+  if echo "$WINE_OUT" | grep -q 'wine_version=wine-'; then
+    ok "wine runs ($(echo "$WINE_OUT" | grep -o 'wine_version=.*' | head -1 | cut -d= -f2))"
+  else
+    bad "wine --version produced nothing"
+  fi
+
+  if echo "$WINE_OUT" | grep -q 'wine_prefix=ready'; then
+    ok "wine built its prefix on demand under /config"
+  else
+    bad "wine did not create a prefix under /config"
+  fi
+
+  if echo "$WINE_OUT" | grep -qi 'cmd64=.*Microsoft Windows'; then
+    ok "64-bit loader runs a Windows program (wine cmd /c ver)"
+  else
+    bad "64-bit wine could not run cmd (cmd64 missing)"
+  fi
+
+  if echo "$WINE_OUT" | grep -qi 'cmd32=.*Microsoft Windows'; then
+    ok "32-bit WoW64 runs an i386 PE (syswow64\\cmd.exe)"
+  elif echo "$WINE_OUT" | grep -q 'cmd32=no-syswow64'; then
+    bad "no syswow64 in the prefix: 32-bit Windows software will not run"
+  else
+    bad "32-bit WoW64 failed to run an i386 PE"
+  fi
+
+  CJK="$(echo "$WINE_OUT" | grep -o 'cjk_fonts=[0-9]*' | head -1)"
+  CJK="${CJK#cjk_fonts=}"
+  if [ -n "$CJK" ] && [ "$CJK" -gt 0 ] 2>/dev/null; then
+    ok "Wine sees the image's Noto fonts (${CJK} entries via fontconfig)"
+  else
+    bad "Wine registered no Noto fonts; Chinese text in Windows apps shows boxes"
+  fi
+
+  if echo "$WINE_OUT" | grep -qi 'window=.*notepad'; then
+    ok "wine-webtop notepad maps a real window"
+    echo "$WINE_OUT" | grep -i 'window=.*notepad' | head -1 | sed 's/^/          /'
+  else
+    bad "notepad did NOT map a window (see /tmp/wine-notepad.log)"
+  fi
 else
-  bad "wine --version produced nothing"
-fi
-
-if echo "$WINE_OUT" | grep -q 'wine_prefix=ready'; then
-  ok "Wine prefix was built under /config"
-else
-  bad "Wine prefix was not built (see /config/.wine-init.log)"
-fi
-
-if echo "$WINE_OUT" | grep -qi 'cmd64=.*Microsoft Windows'; then
-  ok "64-bit loader runs a Windows program (wine cmd /c ver)"
-else
-  bad "64-bit wine could not run cmd (cmd64 missing)"
-fi
-
-if echo "$WINE_OUT" | grep -qi 'cmd32=.*Microsoft Windows'; then
-  ok "32-bit WoW64 runs an i386 PE (syswow64\\cmd.exe)"
-elif echo "$WINE_OUT" | grep -q 'cmd32=no-syswow64'; then
-  bad "no syswow64 in the prefix: 32-bit Windows software will not run"
-else
-  bad "32-bit WoW64 failed to run an i386 PE"
-fi
-
-CJK="$(echo "$WINE_OUT" | grep -o 'cjk_fonts=[0-9]*' | head -1)"
-CJK="${CJK#cjk_fonts=}"
-if [ -n "$CJK" ] && [ "$CJK" -gt 0 ] 2>/dev/null; then
-  ok "Wine sees the image's Noto fonts (${CJK} entries via fontconfig)"
-else
-  bad "Wine registered no Noto fonts; Chinese text in Windows apps shows boxes"
-fi
-
-if echo "$WINE_OUT" | grep -qi 'window=.*notepad'; then
-  ok "wine-webtop notepad maps a real window"
-  echo "$WINE_OUT" | grep -i 'window=.*notepad' | head -1 | sed 's/^/          /'
-else
-  bad "notepad did NOT map a window (see /tmp/wine-notepad.log)"
+  echo "   [info] wine checks skipped (this image has no wine)"
 fi
 
 # --- 8. the desktop must still paint after all of that -------------------

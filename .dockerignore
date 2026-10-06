@@ -1,9 +1,11 @@
 # The build context is the repository root, but the image only needs the
-# Dockerfile and the filesystem overlay in root/. Everything else is excluded
-# so that a multi-hundred-MB ./config (Wine prefix, Chromium profile) is never
-# shipped to the build daemon -- and so that touching docs cannot invalidate
-# the build cache.
+# Dockerfile and the filesystem overlay in root/. Everything else is excluded so
+# that a multi-hundred-MB ./config (Chromium profile, whatever wine leaves
+# behind) is never shipped to the build daemon -- and so that touching docs
+# cannot invalidate the build cache.
 *
 !Dockerfile
 !root
 !root/**
+
+

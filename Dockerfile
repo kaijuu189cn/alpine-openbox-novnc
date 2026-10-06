@@ -3,14 +3,15 @@
 # webtop:alpine-openbox-novnc
 #
 # A from-scratch Alpine + Openbox desktop served over VNC/noVNC, deliberately
-# kept minimal: chromium + openbox + wine, plus only what the session needs to
-# run.
+# kept minimal: chromium + openbox (plus wine, if you ask for it), and only what
+# the session needs to run.
 #
 # IMAGE VARIANTS
 # --------------
 #   v1 (legacy/Dockerfile.v1-dockercli): shipped docker-cli so the desktop
 #       could drive the host's Docker socket.
-#   v2: docker-cli REMOVED, wine ADDED. The image no longer mounts
+#   v2: docker-cli REMOVED, wine ADDED (wine is not bundled any more -- add it
+#       with BUILD_PACKAGES="wine"). The image no longer mounts
 #       /var/run/docker.sock (see docker-compose.yml) and instead runs Windows
 #       software through Wine. The openbox look is copied from
 #       linuxserver/webtop:alpine-openbox (Artwiz-boxed theme, NLMC title
@@ -85,8 +86,8 @@
 # Pruning must happen INSIDE the same RUN as the install, otherwise Docker
 # keeps the original files in the earlier layer and the image does not shrink.
 #
-# WINE (added in v2)
-# ------------------
+# EXTRA PACKAGES (BUILD_PACKAGES)
+# ----------------------------
 # wine 10.7 comes from Alpine's community repository and unpacks to ~372 MB:
 #
 #   /usr/lib/wine/x86_64-windows   182 MB   the 64-bit PE builtins
@@ -130,6 +131,20 @@ FROM alpine:latest
 ARG BUILD_DATE
 ARG VERSION
 ARG APK_MIRROR=mirror.nju.edu.cn
+# Extra Alpine packages to install on top of the base set, space separated.
+# This is the hook for anything you want in the image that we do not choose for
+# you -- wine being the obvious one:
+#
+#   BUILD_PACKAGES=""                    -> chromium + openbox + Xvnc  (~1.6 GB)
+#   BUILD_PACKAGES="wine"                -> + wine, 32-bit WoW64 included
+#   BUILD_PACKAGES="wine pcmanfm gimp"   -> whatever else you need
+#
+# They are installed in the same apk transaction as everything else, so a
+# package that duplicates a dependency costs nothing, and the prune steps below
+# still apply. Nothing else in the image is wine-aware any more: no helper
+# scripts, no menu entries, no .exe association -- `wine` from a terminal is the
+# interface (WINEPREFIX defaults to ~/.wine, i.e. /config/.wine).
+ARG BUILD_PACKAGES=""
 
 LABEL build_version="webtop-novnc version:- ${VERSION} Build-date:- ${BUILD_DATE}"
 LABEL maintainer="alpineopenbox-rebuild"
@@ -165,10 +180,10 @@ ENV LANG=C.UTF-8 \
     VNC_PORT=5901 \
     NOVNC_PORT=3000 \
     VNC_RESOLUTION=1280x800 \
-    VNC_DEPTH=24 \
-    WINEPREFIX=/config/.wine \
-    WINEDEBUG=-all \
-    WINEDLLOVERRIDES="mscoree,mshtml="
+    VNC_DEPTH=24
+# NOTE: no WINEPREFIX/WINEDEBUG/WINEDLLOVERRIDES here. If you add wine through
+# BUILD_PACKAGES, pass whatever you need with -e (WINEPREFIX defaults to
+# ~/.wine, which is /config/.wine).
 
 # ---------------------------------------------------------------------------
 # Packages + prune, in ONE RUN.
@@ -179,7 +194,7 @@ ENV LANG=C.UTF-8 \
 # reclaims the space.
 #
 # Packages, grouped by why they are here:
-#   core      : chromium, openbox, wine
+#   core      : chromium, openbox (+ whatever BUILD_PACKAGES asks for)
 #   session   : tigervnc (Xvnc), novnc, websockify, supervisor, dbus(+x11)
 #   tools     : st, mousepad, xterm, xdg-utils, setxkbmap
 #   fonts/i18n: font-noto (Latin UI font, matches the LinuxServer look),
@@ -187,6 +202,10 @@ ENV LANG=C.UTF-8 \
 #
 # NOTE: docker-cli is deliberately NOT installed any more. The desktop cannot
 # talk to the host Docker socket; use the host shell for that.
+#
+# Wine is not in that list: it is not a decision this image makes for you.
+# BUILD_PACKAGES="wine" adds it (see the ARG above); nothing else in the image
+# knows about wine.
 #
 # PRUNE NOTES
 # -----------
@@ -209,8 +228,8 @@ ENV LANG=C.UTF-8 \
 #     container rather than mutating a live one.
 # ---------------------------------------------------------------------------
 RUN \
-  echo "**** install packages ****" && \
-  apk add --no-cache \
+  echo "**** install packages (extra: ${BUILD_PACKAGES:-none}) ****" && \
+  PACKAGES=" \
     adwaita-icon-theme \
     bash \
     breeze-cursors \
@@ -231,10 +250,11 @@ RUN \
     tigervnc \
     util-linux-misc \
     websockify \
-    wine \
     xdg-utils \
     xkeyboard-config \
-    xterm && \
+    xterm" && \
+  if [ -n "$BUILD_PACKAGES" ]; then echo "**** adding requested packages: $BUILD_PACKAGES ****"; PACKAGES="$PACKAGES $BUILD_PACKAGES"; fi && \
+  apk add --no-cache $PACKAGES && \
   echo "**** application tweaks ****" && \
   ln -sf /usr/bin/st /usr/bin/x-terminal-emulator && \
   echo "**** prune unused GPU drivers (keep the software rasteriser) ****" && \
@@ -278,7 +298,7 @@ RUN \
   mkdir -p /config /defaults && \
   chown -R abc:abc /config
 
-# local files: supervisor programs, init script, openbox defaults, wine helpers
+# local files: supervisor programs, init script, openbox defaults, noVNC modules
 COPY /root /
 
 # ---------------------------------------------------------------------------
@@ -330,18 +350,13 @@ RUN \
   chmod 755 \
     /etc/cont-init.d/10-setup \
     /usr/bin/start-desktop \
-    /usr/bin/chromium-webtop \
-    /usr/bin/wine-webtop \
-    /usr/bin/wine-prefix-init && \
+    /usr/bin/chromium-webtop && \
   chmod 644 /etc/supervisor.d/*.ini && \
   chmod 644 /defaults/* && \
   chmod 644 /usr/share/novnc/app/webtop-adaptive.js && \
   echo "**** the adaptive-resize script must be present (it arrives with COPY /root) ****" && \
   test -s /usr/share/novnc/app/webtop-adaptive.js && \
   grep -q "app/webtop-adaptive.js" /usr/share/novnc/vnc.html && \
-  chmod 644 \
-    /usr/share/applications/wine-webtop.desktop \
-    /etc/xdg/mimeapps.list && \
   ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html
 
 EXPOSE 3000

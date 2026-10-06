@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Wine (Windows program)
-GenericName=Windows compatibility layer
-Comment=Run a Windows program or installer through Wine
-Exec=/usr/bin/wine-webtop %f
-Terminal=false
-Categories=Wine;Utility;
-MimeType=application/x-ms-dos-executable;application/x-msdownload;application/x-msi;application/x-ms-shortcut;

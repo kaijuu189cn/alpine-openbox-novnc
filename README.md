@@ -1,30 +1,32 @@
-# webtop:alpine-openbox-novnc
+# alpine:openbox-novnc
 
 一个从头构建的 Alpine + Openbox 桌面镜像，通过 **VNC / noVNC** 在浏览器中访问。
 **完全不依赖 LinuxServer 的 selkies 基础镜像**，因此不受上游停更影响。
 
-镜像刻意保持最小：**chromium + openbox + wine**，加上会话运行必需的组件。
+镜像刻意保持最小：**chromium + openbox + Xvnc**，加上会话运行必需的组件。
+想再装别的软件（wine、文件管理器、播放器……）用构建参数 **`BUILD_PACKAGES`**。
 **不带 docker cli**（v2 起移除），**不带状态栏面板**（v3 起移除），
 桌面分辨率**跟着浏览器窗口自适应**（v3 起）。
 
-> **v3 变更（本次）**
-> 1. **去掉顶部 status bar**：`tint2` 面板不再安装（连带把"Wine 窗口churn
->    导致 tint2 段错误"那套问题一起删掉了，见下方历史记录）。
-> 2. **分辨率自适应**：`Xvfb + x11vnc` 换成单个 **TigerVNC Xvnc** ——
->    x11vnc 会丢弃浏览器发来的 `SetDesktopSize`（实测），Xvnc 会照做，
->    于是桌面尺寸随浏览器窗口变化。另加 `app/webtop-adaptive.js`：在 noVNC
->    初始化前把 `resize=remote` 写进浏览器存储，避免"浏览器里存过旧设置导致
->    自动适配永远不触发"（见下文说明；URL 显式参数仍然优先）。
+> **本次变更**
+> 1. **Wine 不再是镜像的一部分**，改成构建参数 `BUILD_PACKAGES`（可以追加任意
+>    Alpine 包，不只 wine）。镜像里原先那些 wine 专有集成——助手脚本
+>    `wine-webtop`/`wine-prefix-init`、Wine 右键菜单、`.exe` MIME 关联——**全部删除**：
+>    需要 wine 就 `BUILD_PACKAGES=wine` 构建，然后在终端里直接用 `wine`。
+> 2. **镜像改名**：`webtop:alpine-openbox-novnc` → **`alpine:openbox-novnc`**。
+> 3. **其他版本资源删除**：`legacy/`（v1 + 两个 selkies 版本）与
+>    `scripts/fetch-baseimage.sh` 一并删掉，仓库只剩这一条线；旧版本只能从
+>    git 历史里找。
 >
-> 早前版本：v2 去掉 `docker-cli`、加入 Wine（当时 10.7，现在随 Alpine 是 11.0）；v1（带 docker cli）
-> 的 Dockerfile 存于 `legacy/Dockerfile.v1-dockercli`。
+> 更早：v3 去掉顶部面板、`Xvfb + x11vnc` 换成 Xvnc（分辨率自适应）；
+> v2 去掉 `docker-cli` 并加入 Wine。
 
 ## 架构（已从 selkies 换成 noVNC）
 
 ```
 Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC 服务端，一个进程
   ├── openbox            ← 窗口管理器（无面板）
-  ├── wine               ← Windows 兼容层（按需启动，非常驻）
+  ├── wine               ← 可选：只有 BUILD_PACKAGES 里要了才会装上
   └── websockify + noVNC (3000)  ← 浏览器访问（RFB 走 127.0.0.1:5901）
 ```
 
@@ -36,7 +38,7 @@ Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC
 | 构建时间 | 2025-06-24（14 个月前） | 本次构建 |
 | Alpine | **3.21.3** | **3.24.2**（`FROM alpine:latest`，跟着最新稳定版走） |
 | Chromium | 136.0.7103.113 | **跟随 Alpine 仓库** |
-| Windows 程序 | 无 | **Wine 11.0（含 32 位 WoW64）** |
+| Windows 程序 | 无 | **可选**：`BUILD_PACKAGES=wine`（Alpine 的 11.x，含 32 位 WoW64） |
 | 串流层 | selkies / pixelflux | **Xvnc (TigerVNC 1.16.2) + noVNC 1.6.0** |
 | 分辨率 | 自适应（selkies） | **自适应（Xvnc SetDesktopSize）** |
 | 状态栏面板 | 无 | **无（v3 移除 tint2）** |
@@ -49,37 +51,32 @@ Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC
 
 ```
 .
-├── Dockerfile                   # 镜像定义（FROM alpine:latest + 全套裁剪/补丁）
+├── Dockerfile                   # 镜像定义（FROM alpine:latest + 裁剪/补丁/可选包）
 ├── root/                        # 镜像内文件系统覆盖层（COPY root /）
 │   ├── etc/supervisor.d/        #   xvnc / openbox / novnc
 │   ├── etc/cont-init.d/10-setup #   首次运行初始化（含默认文件升级）
-│   ├── etc/xdg/mimeapps.list    #   .exe 默认交给 Wine 打开
 │   ├── defaults/                #   menu.xml / rc.xml / autostart（*.v1 用于安全升级比对）
-│   ├── usr/bin/                 #   start-desktop / chromium-webtop / wine-webtop / wine-prefix-init
+│   ├── usr/bin/                 #   start-desktop / chromium-webtop
 │   ├── usr/local/bin/           #   openbox-lsio-style（LinuxServer 样式）
 │   └── usr/share/novnc/app/     #   webtop-adaptive.js（强制自适应分辨率）
-├── docker-compose.yml           # 构建 + 运行（默认 3000，可用 .env 覆盖）
+├── docker-compose.yml           # 构建 + 运行（默认 3000，可用 .env 覆盖；BUILD_PACKAGES 追加软件）
 ├── .env.example                 # WEB_PORT / CONFIG_DIR 等可调项模板
 ├── scripts/
-│   ├── build.sh                 # 可选构建入口（额外传 BUILD_DATE + 别名标签）
-│   ├── verify.sh                # 一键验证（37 项检查）
+│   ├── build.sh                 # 可选构建入口（传 BUILD_DATE + 别名标签）
+│   ├── verify.sh                # 一键验证（默认镜像 29 项，带 wine 时 +7 项，自动判断）
 │   ├── chromium-regression.sh   # Chromium 菜单启动回归
-│   ├── wine-regression.sh       # Wine 回归（64/32 位、字体、窗口）
+│   ├── wine-regression.sh       # Wine 回归（仅当镜像里有 wine 时才会被 verify 调用）
 │   ├── vncprobe.py              # VNC 像素探测（数颜色）
 │   ├── vncresize.py             # 请求服务器改分辨率（验证自适应）
-│   ├── vncshot.py               # VNC 截图（存 PNG）
-│   └── fetch-baseimage.sh       # legacy 的 selkies 基础镜像取用
+│   └── vncshot.py               # VNC 截图（存 PNG）
 ├── docs/
 │   └── screenshots/             # README 引用的实拍截图
 ├── logs/                        # 验证日志 + 排查记录与脚手架
-└── legacy/                      # 早期版本，不参与默认构建
-    ├── Dockerfile.v1-dockercli  #   v1：带 docker cli 的那版镜像
-    ├── alpine-openbox/          #   最早的 selkies 版（x11vnc 之前）
-    └── alpine-sway/             #   sway/Wayland 版
+└── (无 legacy/)                 # 早期版本已删除，需要时从 git 历史取
 ```
 
 > 构建上下文是**仓库根**：`.dockerignore` 只放行 `Dockerfile` 与 `root/`，
-> 所以 `config/`（Wine 前缀，几百 MB）、`logs/`、`legacy/` 都不会被送进 daemon。
+> 所以 `config/`（Chromium profile、Wine 留下的东西）、`logs/` 都不会被送进 daemon。
 
 ## 构建与运行
 
@@ -117,7 +114,7 @@ Dockge 这类工具是「一个目录一个 stack」：目录里放 `compose.yam
 
 ```
 /data/stacks/webtop3/
-├── compose.yaml      # 服务定义，写 image: webtop:alpine-openbox-novnc
+├── compose.yaml      # 服务定义，写 image: alpine:openbox-novnc
 └── data/             # 挂到容器的 /config：Wine 前缀、Chromium profile、桌面文件
 ```
 
@@ -137,7 +134,7 @@ docker run -d --name webtop \
   -e TZ=Asia/Shanghai \
   -v "$PWD/config:/config" \
   --shm-size=512m \
-  webtop:alpine-openbox-novnc
+  alpine:openbox-novnc
 ```
 
 - `-p 3000:3000` 换成宿主上没被占用的端口即可（例如 `3002:3000`）。
@@ -238,47 +235,48 @@ http://<主机IP>:3000/vnc.html?resize=off
 注意：改的是**桌面尺寸**，已有窗口不会被拉伸（openbox 的常规行为）——
 最大化后就会铺满新尺寸。
 
-### 在桌面里运行 Windows 程序（Wine）
+### 加装软件：BUILD_PACKAGES
 
-镜像内置 **Wine 11.0**（Alpine community 仓库），**支持 32 位 Windows 程序**：
-wine 用的是新版 WoW64 布局（`/usr/lib/wine/i386-windows`），所以 Alpine 不需要
-multilib 就能跑 i386 的 PE。
-
-打开桌面右下角右键菜单 → **Wine (Windows apps)**，里面有：
-
-| 菜单项 | 说明 |
-|---|---|
-| Wine File Manager (C:) | 浏览 Wine 的 C 盘（相当于 Windows 资源管理器） |
-| Notepad / Explorer / Command Prompt | Wine 自带程序 |
-| Wine Configuration (winecfg) | 改 Windows 版本、D: 盘映射、显卡/音频设置 |
-| Registry Editor / Uninstall Software | 注册表编辑器 / 卸载已装程序 |
-
-在终端里安装 Windows 软件：
+镜像只装会话必需的东西，其他软件通过**构建参数**追加（Alpine 官方仓库里的包）：
 
 ```bash
-# 桌面里打开 st/xterm，然后：
-wine-webtop ~/Desktop/setup.exe      # 安装包 / 程序
-wine-webtop notepad                  # 跑 Wine 自带程序
-wine-webtop 'C:\Program Files\App\App.exe'
+# 带 wine 构建，并打一个 -wine 标签
+BUILD_PACKAGES=wine ./scripts/build.sh wine
+# 或者用 compose
+BUILD_PACKAGES=wine IMAGE=alpine:openbox-novnc-wine docker compose up -d --build
+
+# 想装什么就写什么（空格分隔）
+BUILD_PACKAGES="wine pcmanfm gimp" ./scripts/build.sh
 ```
 
-> 用 `wine-webtop` 而不是裸 `wine`：菜单动作拿到的是空环境，包装脚本会补齐
-> `HOME` / `DISPLAY` / `XDG_RUNTIME_DIR`，并在前缀不存在时先跑一次
-> `wine-prefix-init`。首次构建前缀约 30 秒，openbox 的 autostart 已在后台
-> 预热，所以正常情况下点菜单是秒开的。
+它们与基础包**在同一次 apk 事务里安装**，所以重复依赖不会多占空间，
+下面的裁剪步骤同样生效。默认值是空的——不写就不装。
 
-几点说明：
+**Wine 怎么用**（如果构建时加了它）：镜像里**没有**任何 wine 专用的东西
+（没有助手脚本、右键菜单里没有 Wine 子菜单、`.exe` 也没有 MIME 关联），
+就是标准的 `wine`：
 
-- **.exe 双击即可**：镜像注册了 MIME 关联（`/etc/xdg/mimeapps.list`），
-  文件管理器里双击 `.exe` 会调用 `wine-webtop`。
-- **中文显示正常**：Wine 通过 fontconfig 枚举系统字体，镜像里的
-  `font-noto-cjk` 会被注册进前缀（验证脚本会检查这一点）。
-- **没有 wine-mono / wine-gecko**：Alpine 仓库里没有这两个包。需要 .NET 的
-  程序会直接失败（而不是卡在下载对话框）；需要的话自行从
-  `https://dl.winehq.org/wine/wine-mono/` 下载 `.msi` 后用
-  `wine-webtop msiexec /i mono.msi` 安装，并相应清掉 `WINEDLLOVERRIDES`。
-- **没有 winetricks**：Alpine 仓库不提供，需要就从上游拉脚本自行安装。
-- **音频**：容器里没有 PulseAudio 服务端，Wine 的声音后端不会出声。
+```bash
+wine notepad                     # 自带程序
+wine ~/Desktop/setup.exe         # 安装包 / 程序
+wine winecfg                     # 配置（版本、盘符、音频…）
+```
+
+- `WINEPREFIX` 默认落在 `~/.wine`，也就是 **`/config/.wine`**（在持久卷里，
+  容器重建不丢）；第一次跑 wine 会自动建前缀（约十几秒）。
+- **支持 32 位 Windows 程序**：Alpine 的 wine 用新版 WoW64 布局
+  （`/usr/lib/wine/i386-windows`），不需要 multilib。
+- **中文正常**：wine 通过 fontconfig 枚举系统字体，镜像里的 `font-noto-cjk`
+  会被注册进前缀（`wine reg query "HKLM\Software\Microsoft\Windows NT\CurrentVersion\Fonts"` 能看到）。
+- **没有 wine-mono / wine-gecko**：Alpine 仓库不提供。需要 .NET 的程序会直接失败；
+  可从 `https://dl.winehq.org/wine/wine-mono/` 下载 `.msi` 后
+  `wine msiexec /i mono.msi` 装上。
+- **没有 winetricks**：Alpine 仓库不提供，需要就自己从上游拉。
+- **音频**：容器里没有 PulseAudio 服务端，wine 不出声。
+
+> 想让 wine 在桌面右键菜单里出现、或让 `.exe` 双击就打开，可以自行往
+> `/defaults/menu.xml` 与 `/etc/xdg/mimeapps.list` 里加（旧版本就是这么做的，
+> 可从 git 历史里参考）。
 
 ### 不再内置 docker cli（v2 起）
 
@@ -289,7 +287,7 @@ v1 镜像里带 `docker-cli`，可以把宿主机的 `/var/run/docker.sock` 挂�
 - `abc` 用户不再加入 `docker` 组；
 - 相应地少了一份「容器内进程等同宿主机 root」的风险面。
 
-需要这个能力时用 `legacy/Dockerfile.v1-dockercli` 或自行 `apk add docker-cli`。
+需要这个能力时用 `BUILD_PACKAGES="docker-cli"` 重新构建（并自行挂 socket，风险自负）。
 宿主机上的操作请直接在宿主机终端执行。
 
 ## Openbox 样式（复制 linuxserver/webtop:alpine-openbox）
@@ -514,7 +512,8 @@ WARN exited: tint2 (terminated by SIGSEGV (core dumped); not expected)
 
 当时的处置（v3 删掉面板后都不再需要，仅作记录）：
 
-1. **Wine 前缀改为无 X 构建**（`wine-prefix-init --headless`）：
+1. **Wine 前缀改为无 X 构建**（当时那个 `wine-prefix-init --headless` 助手；
+   现在 wine 是可选的额外包，助手脚本已随集成一起删除）：
    同一场景崩溃次数 14 → 0。这个改动**仍然保留**（少一族 X 客户端，
    启动更干净），只是理由从"别打死面板"变成"别在开机时惊动 Wine"。
 2. **tint2 交 supervisor 托管**：启动 Windows 程序仍会崩一次，1 秒内自动拉回。
@@ -541,7 +540,9 @@ WARN exited: tint2 (terminated by SIGSEGV (core dumped); not expected)
 PROBE_HOST=<主机IP> ./scripts/verify.sh
 ```
 
-实测结果（Alpine 3.24.2 + Wine 11.0，全新 volume，**37/37 通过**，完整日志见 `logs/` 下最新一份 `verify-*.log`）：
+实测结果（全新 volume）：
+
+默认镜像 **`alpine:openbox-novnc`**（1.47 GB，不含 wine）——**29/29 通过**，wine 相关的检查自动跳过（日志 `logs/verify-base-1836.log`）：
 
 ```
    [ OK ] container is running
@@ -550,10 +551,9 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
    [ OK ] service 'novnc' is RUNNING
    [ OK ] core tool 'chromium' is present
    [ OK ] core tool 'openbox' is present
-   [ OK ] core tool 'wine' is present
+   [info] wine is not installed (BUILD_PACKAGES did not ask for it)
    [ OK ] docker cli is absent (removed in v2)
-   [ OK ] wine helper 'wine-webtop' is present
-   [ OK ] wine helper 'wine-prefix-init' is present
+   [ OK ] no wine-specific integration in the image
    [ OK ] Openbox menu.xml parses (no libxml2 parser errors)
    [ OK ] openbox theme is Artwiz-boxed (LinuxServer style)
    [ OK ] openbox titleLayout is NLMC (as in the LinuxServer image)
@@ -576,25 +576,16 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
    [ OK ] desktop resizes on request (SetDesktopSize honoured, after=(1500, 850))
    [ OK ] framebuffer reports the requested size after the resize
    [ OK ] the open window repaints at the new size (623 unique colours)
-          wine_version=wine-11.0
-          wine_prefix=ready
-          cmd64=Microsoft Windows 10.0.19045
-          cmd32=Microsoft Windows 10.0.19045
-          cjk_fonts=65
-          notepad_procs=1
-          window=_NET_WM_NAME(UTF8_STRING) = "about:blank - Chromium" WM_CLASS(STRING) = "chromium-browser", "Chromium-browser"
-          window=_NET_WM_NAME(UTF8_STRING) = "Untitled - Notepad" WM_CLASS(STRING) = "notepad.exe", "notepad.exe"
-   [ OK ] wine runs (wine-11.0)
-   [ OK ] Wine prefix was built under /config
-   [ OK ] 64-bit loader runs a Windows program (wine cmd /c ver)
-   [ OK ] 32-bit WoW64 runs an i386 PE (syswow64\cmd.exe)
-   [ OK ] Wine sees the image's Noto fonts (65 entries via fontconfig)
-   [ OK ] wine-webtop notepad maps a real window
-          window=_NET_WM_NAME(UTF8_STRING) = "Untitled - Notepad" WM_CLASS(STRING) = "notepad.exe", "notepad.exe"
-   [ OK ] desktop still paints after the Chromium and Wine tests (1004 unique colours)
+   [info] wine checks skipped (this image has no wine)
+   [ OK ] desktop still paints after the Chromium and Wine tests (623 unique colours)
 
- passed: 37   failed: 0
+ passed: 29   failed: 0
 ```
+
+同一份代码用 `BUILD_PACKAGES=wine` 构建出来（`alpine:openbox-novnc-wine`，2.07 GB）会多跑 7 项
+wine 检查——**36/36 通过**（wine 11.0、64 位与 32 位 WoW64、前缀按需创建、字体注册、
+notepad 窗口，日志 `logs/verify-wine-1836.log`）。
+
 
 > `vncprobe.py` 会真的完成 RFB 握手并统计整屏颜色数 —— 这是"桌面确实在渲染"
 > 的硬证据，而不是只看端口通不通。

@@ -30,7 +30,10 @@ services:
         VERSION: ${TAG:-novnc}
         # compose cannot substitute a live date; scripts/build.sh passes one.
         BUILD_DATE: ${BUILD_DATE:-compose-build}
-    image: webtop:alpine-openbox-novnc
+        # Extra Alpine packages to add, space separated. Wine is the usual one:
+        #   BUILD_PACKAGES=wine IMAGE=alpine:openbox-novnc-wine docker compose up -d --build
+        BUILD_PACKAGES: ${BUILD_PACKAGES:-}
+    image: ${IMAGE:-alpine:openbox-novnc}
     container_name: webtop
 
     environment:

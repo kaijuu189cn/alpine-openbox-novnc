@@ -1,75 +1,48 @@
 #!/usr/bin/env bash
 #
-# build.sh -- build the webtop noVNC image(s).
+# build.sh -- build the webtop noVNC image.
 #
-# China-network notes baked in:
-#   * Alpine apk is served from a domestic mirror (default mirror.nju.edu.cn,
-#     measured fastest from this network at ~1.5 MB/s vs ~0.8 MB/s for the
-#     official CDN; mirrors.ustc.edu.cn and mirrors.tuna.tsinghua.edu.cn both
-#     returned HTTP 403 here).
-#   * The noVNC image's base is plain `alpine:3.22` from Docker Hub, which the
-#     local dockerd already accelerates with its configured registry mirrors.
-#     The older selkies builds had to fetch from ghcr.io, where blob downloads
-#     stall -- see scripts/fetch-baseimage.sh and README.md.
+#   ./scripts/build.sh                                   # alpine:openbox-novnc
+#   BUILD_PACKAGES=wine ./scripts/build.sh               # + wine (same tag)
+#   BUILD_PACKAGES=wine ./scripts/build.sh wine          # + wine, tagged -wine
 #
-# USAGE
-#   ./scripts/build.sh                 # build webtop:alpine-openbox-novnc
-#   ./scripts/build.sh legacy          # also rebuild the older selkies images
+# `docker compose up -d --build` does the same thing; this script exists to pass
+# a real BUILD_DATE and to tag the extra "-wine" (or any) alias.
 #
 # ENV
-#   APK_MIRROR   Alpine mirror host (default mirror.nju.edu.cn)
-#   TAG          extra image tag to produce (default novnc-wine1); the image is
-#                always also tagged webtop:alpine-openbox-novnc
+#   IMAGE           image to produce (default alpine:openbox-novnc)
+#   BUILD_PACKAGES  extra Alpine packages, space separated (default none)
+#   APK_MIRROR      Alpine mirror host (default mirror.nju.edu.cn)
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="${IMAGE:-alpine:openbox-novnc}"
+BUILD_PACKAGES="${BUILD_PACKAGES:-}"
 APK_MIRROR="${APK_MIRROR:-mirror.nju.edu.cn}"
-TAG="${TAG:-novnc-wine1}"
-TARGET="${1:-novnc}"
+EXTRA_TAG="${1:-}"
 
 BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%S+00:00)"
 
 echo "=============================================="
 echo " webtop rebuild (noVNC)"
-echo "   apk mirror : $APK_MIRROR"
-echo "   tag        : $TAG"
+echo "   image          : $IMAGE"
+echo "   extra packages : ${BUILD_PACKAGES:-none}"
+echo "   apk mirror     : $APK_MIRROR"
 echo "=============================================="
 
-build_one() {
-  local name="$1" dir="$2" extra_tag="$3"
-  echo
-  echo "==> building webtop:${name}"
-  docker build \
-    --build-arg "BUILD_DATE=${BUILD_DATE}" \
-    --build-arg "VERSION=${TAG}" \
-    --build-arg "APK_MIRROR=${APK_MIRROR}" \
-    -t "webtop:${name}" \
-    -t "webtop:${extra_tag}" \
-    "$ROOT/$dir"
-  echo "==> built webtop:${name}"
-  docker image inspect "webtop:${name}" --format '    id={{.Id}} size={{.Size}}'
-}
+TAGS=(--tag "$IMAGE")
+if [ -n "$EXTRA_TAG" ]; then
+  TAGS+=(--tag "${IMAGE%:*}:$EXTRA_TAG")
+fi
 
-case "$TARGET" in
-  novnc|"")
-    build_one alpine-openbox-novnc . "alpine-openbox-${TAG}"
-    ;;
-  legacy)
-    # Older selkies-based builds. These need the ghcr.io base image, so fetch
-    # it first with skopeo (plain `docker pull` stalls on that registry here).
-    "$ROOT/scripts/fetch-baseimage.sh" alpine324 amd64
-    build_one alpine-openbox legacy/alpine-openbox "alpine-openbox-${TAG}"
-    build_one alpine-sway    legacy/alpine-sway    "alpine-sway-${TAG}"
-    ;;
-  *)
-    echo "ERROR: unknown target '$TARGET' (use novnc|legacy)" >&2
-    exit 1
-    ;;
-esac
+docker build \
+  --build-arg "BUILD_DATE=${BUILD_DATE}" \
+  --build-arg "VERSION=${IMAGE#*:}" \
+  --build-arg "APK_MIRROR=${APK_MIRROR}" \
+  --build-arg "BUILD_PACKAGES=${BUILD_PACKAGES}" \
+  "${TAGS[@]}" \
+  "$ROOT"
 
 echo
-echo "=============================================="
-echo " done. images:"
-docker images --filter 'reference=webtop:*' --format '   {{.Repository}}:{{.Tag}}  {{.Size}}'
-echo "=============================================="
+docker image inspect "$IMAGE" --format '   built {{.RepoTags}} size={{.Size}} bytes'

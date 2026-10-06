@@ -1,9 +1,0 @@
-# System-wide default handlers for webtop:alpine-openbox-novnc.
-#
-# Double-clicking / xdg-open'ing a Windows binary hands it to Wine instead of
-# the "no application can open this file" dialog.
-[Default Applications]
-application/x-ms-dos-executable=wine-webtop.desktop
-application/x-msdownload=wine-webtop.desktop
-application/x-msi=wine-webtop.desktop
-application/x-ms-shortcut=wine-webtop.desktop

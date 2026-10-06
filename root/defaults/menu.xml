@@ -17,45 +17,10 @@
   Item icons follow linuxserver/webtop:alpine-openbox, whose menu.xml puts the
   48x48 hicolor/pixmaps icons on its entries (its <menu> settings, including
   showIcons, are identical to Alpine's stock rc.xml). Every path below is
-  verified to exist in this image; entries Wine ships no icon for are left bare.
+  verified to exist in this image.
 
-  The Wine entries call /usr/bin/wine-webtop, NOT /usr/bin/wine: a menu action
-  inherits a bare environment, and the wrapper is what pins HOME/DISPLAY and
-  builds the Wine prefix on first use. See that script for details.
 -->
 <openbox_menu xmlns="http://openbox.org/3.4/menu">
-
-<!-- Wine submenu: included into root-menu below via <menu id="wine-menu"/>. -->
-<menu id="wine-menu" label="Wine (Windows apps)">
-  <item label="Wine File Manager (C:)">
-    <action name="Execute"><command>/usr/bin/wine-webtop winefile</command></action>
-  </item>
-  <item label="Notepad">
-    <action name="Execute"><command>/usr/bin/wine-webtop notepad</command></action>
-  </item>
-  <item label="Explorer (drives)">
-    <action name="Execute"><command>/usr/bin/wine-webtop explorer</command></action>
-  </item>
-  <separator />
-  <item label="Wine Configuration (winecfg)">
-    <action name="Execute"><command>/usr/bin/wine-webtop winecfg</command></action>
-  </item>
-  <item label="Registry Editor">
-    <action name="Execute"><command>/usr/bin/wine-webtop regedit</command></action>
-  </item>
-  <item label="Uninstall Software">
-    <action name="Execute"><command>/usr/bin/wine-webtop uninstaller</command></action>
-  </item>
-  <separator />
-  <item label="Command Prompt" icon="/usr/share/pixmaps/xterm-color_48x48.xpm">
-    <action name="Execute"><command>/usr/bin/wine-webtop cmd</command></action>
-  </item>
-  <item label="How to install an .exe">
-    <action name="Execute">
-      <command>/usr/bin/xterm -e /bin/bash -lc 'echo "Start Windows software from a terminal:"; echo; echo "  wine-webtop ~/Desktop/setup.exe"; echo; echo ".exe files in the file manager also open with Wine."; echo; read -p "press Enter to close"'</command>
-    </action>
-  </item>
-</menu>
 
 <menu id="root-menu" label="MENU">
   <item label="Web Browser (Chromium)" icon="/usr/share/icons/hicolor/48x48/apps/chromium.png">
@@ -74,8 +39,6 @@
   <item label="Text Editor" icon="/usr/share/icons/hicolor/48x48/apps/org.xfce.mousepad.png">
     <action name="Execute"><command>/usr/bin/mousepad</command></action>
   </item>
-  <separator />
-  <menu id="wine-menu" label="Wine (Windows apps)" />
   <separator />
   <item label="Reconfigure Openbox">
     <action name="Reconfigure" />
