@@ -536,7 +536,7 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
 
 截图由 `scripts/vncshot.py` 抓取（纯标准库 RFB 客户端，直接存 PNG）。
 
-## 精简优化（1.66 GB → 1.38 GB，v2 含 Wine 后 1.9 GB）
+## 精简优化（1.66 GB → 1.38 GB；v2 加 Wine 到 1.92 GB；v3 换 Xvnc 降到 1.91 GB）
 
 保留核心工具：**chromium + openbox + wine**（v1 曾是 docker cli + chromium + openbox），
 其余只留会话运行必需。
