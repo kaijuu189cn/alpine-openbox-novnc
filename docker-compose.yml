@@ -1,32 +1,70 @@
-# webtop:alpine-openbox-novnc
+# webtop:alpine-openbox-novnc -- build and run the image with one command
 #
-# Build first:
-#   ./scripts/build.sh
+#   docker compose up -d --build     # build the image, then start it on :3000
+#   docker compose logs -f           # entrypoint banner + supervisor output
+#   docker compose down              # stop it (./config keeps all the state)
 #
-# The web UI (noVNC) is on container port 3000.
+# The compose file builds the image itself, so ./scripts/build.sh is optional:
+# that script additionally passes a real BUILD_DATE and tags the extra
+# webtop:alpine-openbox-<TAG> alias, which compose does not need.
+#
+# Everything below can be overridden from the environment or a .env file:
+#
+#   WEB_PORT=3003 docker compose up -d --build     # host port for the noVNC UI
+#   CONFIG_DIR=/srv/webtop docker compose up -d    # where /config lives
+#   APK_MIRROR=mirrors.aliyun.com docker compose up -d --build
+#
+# NOTE ON THE DEFAULT PORT: the UI defaults to 3000, which is the port this
+# image serves on and the one the README documents. If another webtop already
+# owns 3000 on the host, set WEB_PORT in a .env file (see .env.example) or on
+# the command line.
 services:
   webtop:
+    # Build context; `image` below is what the build produces and what `up`
+    # will use. With both set, `docker compose up -d` (without --build) reuses
+    # an existing image and only builds when it is missing.
+    build:
+      context: ./novnc/alpine-openbox
+      args:
+        APK_MIRROR: ${APK_MIRROR:-mirror.nju.edu.cn}
+        VERSION: ${TAG:-novnc}
+        # compose cannot substitute a live date; scripts/build.sh passes one.
+        BUILD_DATE: ${BUILD_DATE:-compose-build}
     image: webtop:alpine-openbox-novnc
     container_name: webtop
+
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Asia/Shanghai
-      # Size the desktop STARTS at. The browser resizes it to match its own
-      # window (noVNC resize=remote + Xvnc), so this is not a fixed resolution.
+      # The size the desktop STARTS at. The browser resizes it to its own
+      # window (noVNC resize=remote + Xvnc SetDesktopSize), so this is a
+      # starting point, not a fixed resolution.
       - VNC_RESOLUTION=1280x800
       # - VNC_DEPTH=24
+
     volumes:
-      - ./config:/config
-      # NOTE (v2): docker-cli is no longer part of the image, so there is no
-      # docker.sock mount here any more. If you re-add docker-cli yourself and
-      # mount the socket, be aware that it grants the container
-      # host-root-equivalent access.
+      # Wine prefix, Chromium profile and the desktop config live here. Point
+      # it somewhere else with CONFIG_DIR=/path docker compose up -d.
+      - "${CONFIG_DIR:-./config}:/config"
+
     ports:
-      # host:container -- the noVNC web UI
-      - "3000:3000"
-      # Uncomment to also expose VNC directly to a native client.
-      # NOTE: x11vnc runs with -nopw, so do not expose this to untrusted networks.
-      # - "5901:5901"
+      # host:container -- the noVNC web UI (container side is always 3000).
+      # The VNC port 5901 is deliberately NOT published: Xvnc runs with
+      # -SecurityTypes None and -localhost, so only websockify can reach it.
+      - "${WEB_PORT:-3000}:3000"
+
+    # Chromium is much happier with more than the default 64 MB /dev/shm.
     shm_size: "512mb"
+
+    # The image's own tooling is the check: if noVNC answers, the stack is up.
+    # (busybox wget is in the image; curl is not.)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Xvnc + openbox + websockify, plus the first-run Wine prefix build.
+      start_period: 60s
+
     restart: unless-stopped

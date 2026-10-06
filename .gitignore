@@ -3,6 +3,9 @@
 # hundreds of MB and completely reproducible -- never commit it.
 /config/
 
+# Local compose overrides (see .env.example)
+/.env
+
 # Python bytecode left by running the helper scripts
 __pycache__/
 *.pyc

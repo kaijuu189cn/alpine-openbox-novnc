@@ -83,43 +83,52 @@ Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC
 
 ## 构建与运行
 
+### 用 compose（推荐：构建 + 启动一条命令）
+
 ```bash
-./scripts/build.sh                 # 构建 webtop:alpine-openbox-novnc
+docker compose up -d --build     # 构建镜像并启动，UI 在 http://<主机IP>:3000
+docker compose logs -f           # 入口横幅 + supervisor 日志
+docker compose down              # 停掉（./config 里的状态都保留）
+```
+
+compose 文件里带 `build:` 段（context = `novnc/alpine-openbox`），
+所以**不必先跑 `scripts/build.sh`**——那条路只是额外传一个真实的
+`BUILD_DATE` 并多打一个 `webtop:alpine-openbox-<TAG>` 别名。
+`docker compose ps` 会显示 `(healthy)`：镜像里用 busybox `wget` 探 3000 端口。
+
+可调项都能用环境变量或 `.env` 覆盖（模板见 `.env.example`）：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `WEB_PORT` | `3000` | 发布到宿主机的端口（容器内固定 3000） |
+| `CONFIG_DIR` | `./config` | `/config` 的位置：Wine 前缀、Chromium profile、桌面配置 |
+| `APK_MIRROR` | `mirror.nju.edu.cn` | 构建时的 Alpine 镜像源 |
+| `TAG` | `novnc` | 镜像别名标签（`webtop:alpine-openbox-<TAG>`） |
+
+> 本机 3000 端口被常驻的 `webtop1` 占用，所以仓库**外**的本地 `.env` 里写了
+> `WEB_PORT=3002`（`.env` 已被 gitignore）。删掉那一行或改成 `3000`
+> 就是默认行为。
+
+### 不用 compose（等价写法）
+
+```bash
+./scripts/build.sh
 
 docker run -d --name webtop \
   -p 3000:3000 \
   -e PUID=1000 -e PGID=1000 \
   -e TZ=Asia/Shanghai \
-  -v /path/to/config:/config \
-  webtop:alpine-openbox-novnc
-```
-
-浏览器打开 `http://<主机IP>:3000` → 直接进入 noVNC 桌面。
-
-### 推荐的生产写法
-
-```bash
-docker run -d --name webtop --restart unless-stopped \
-  -p 3000:3000 \
-  -e PUID=1000 -e PGID=1000 -e TZ=Asia/Shanghai -e VNC_RESOLUTION=1280x800 \
   -v "$PWD/config:/config" \
   --shm-size=512m \
   webtop:alpine-openbox-novnc
 ```
 
-- `-p 3000:3000` 换成宿主上没被占用的端口即可（示例里若 3000 已被
-  别的 webtop 占用，用 `3002:3000`）。
-- `/config` 挂到项目里的 `./config`（也可以换成任意宿主机目录或命名卷）。
-  Wine 前缀就在 `config/.wine`；把 `.exe` 丢进 `config/Desktop` 就能在桌面里
-  双击安装/运行。
-- 运行状态：3 个受管服务（xvnc / openbox / novnc），无面板；
-  浏览器打开后桌面自适应窗口大小。
-- 建议 `--shm-size=512m` 或更大，Chromium 在默认 64 MB `/dev/shm` 下更容易卡。
+- `-p 3000:3000` 换成宿主上没被占用的端口即可（例如 `3002:3000`）。
+- 建议 `--shm-size=512m` 或更大：Chromium 在默认 64 MB `/dev/shm` 下更容易卡。
+- `/config` 里存 Wine 前缀与 Chromium profile；把 `.exe` 丢进
+  `config/Desktop` 就能在桌面里双击安装/运行。
 
-> 注意：如果这个卷是更早版本播过种的，`~/.config/openbox/menu.xml` 之类的
-> 文件会被判定为"用户已修改"而**不被新默认值覆盖**（这是刻意的保护）。
-> 想换成镜像里的最新默认值，删掉该文件重启容器即可，例如：
-> `rm config/.config/openbox/menu.xml && docker restart webtop3`。
+浏览器打开 `http://<主机IP>:3000` → 直接进入 noVNC 桌面。
 
 ### 环境变量
 
