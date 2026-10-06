@@ -110,6 +110,22 @@ compose 文件里带 `build:` 段（context = 仓库根，靠 `.dockerignore` �
 > `WEB_PORT=3002`（`.env` 已被 gitignore）。删掉那一行或改成 `3000`
 > 就是默认行为。
 
+### 作为 Dockge / Portainer stack 部署
+
+Dockge 这类工具是「一个目录一个 stack」：目录里放 `compose.yaml` 和它要挂的数据。
+本项目的 stack 目录只需要两样东西——镜像仍然由源码那边构建：
+
+```
+/data/stacks/webtop3/
+├── compose.yaml      # 服务定义，写 image: webtop:alpine-openbox-novnc
+└── data/             # 挂到容器的 /config：Wine 前缀、Chromium profile、桌面文件
+```
+
+`compose.yaml` 里**不需要** `build:`（这跟仓库里那份不同）：镜像由源码目录
+`docker compose build` 产出，stack 只负责运行。加个 `x-dockge.urls`
+Dockge 就能直接点开访问地址；`shm_size: 1gb`、`container_name`、
+`deploy.resources.limits` 按需写。
+
 ### 不用 compose（等价写法）
 
 ```bash
