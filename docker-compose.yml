@@ -1,4 +1,4 @@
-# webtop:alpine-openbox-novnc -- build and run the image with one command
+# alpine:openbox-novnc -- build and run the image with one command
 #
 #   docker compose up -d --build     # build the image, then start it on :3000
 #   docker compose logs -f           # entrypoint banner + supervisor output

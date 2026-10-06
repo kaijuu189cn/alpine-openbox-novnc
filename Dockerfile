@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# webtop:alpine-openbox-novnc
+# alpine:openbox-novnc
 #
 # A from-scratch Alpine + Openbox desktop served over VNC/noVNC, deliberately
 # kept minimal: chromium + openbox (plus wine, if you ask for it), and only what

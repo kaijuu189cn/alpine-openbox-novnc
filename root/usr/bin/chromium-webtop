@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Chromium launcher for webtop:alpine-openbox-novnc.
+# Chromium launcher for alpine:openbox-novnc.
 #
 # WHY THIS WRAPPER EXISTS
 # (fixes: "openbox 右键菜单 webbrowser 打不开 chromium")
