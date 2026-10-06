@@ -259,6 +259,11 @@ RUN \
     /usr/share/novnc/app/ui.js && \
   { grep -q "UI.initSetting('resize', 'remote')" /usr/share/novnc/app/ui.js || \
     { echo "FATAL: noVNC resize default patch did not apply (upstream changed)" >&2; exit 1; }; } && \
+  echo "**** make the adaptive resize stick (webtop-adaptive.js) ****" && \
+  sed -i "s|<script type=\"module\" crossorigin=\"anonymous\" src=\"app/error-handler.js\"></script>|&\n    <script type=\"module\" src=\"app/webtop-adaptive.js\"></script>|" \
+    /usr/share/novnc/vnc.html && \
+  { grep -q "app/webtop-adaptive.js" /usr/share/novnc/vnc.html || \
+    { echo "FATAL: webtop-adaptive.js is not wired into vnc.html (upstream changed)" >&2; exit 1; }; } && \
   echo "**** rebuild font cache after pruning ****" && \
   fc-cache -f > /dev/null 2>&1 || true && \
   echo "**** resulting size ****" && \
@@ -328,6 +333,10 @@ RUN \
     /usr/bin/wine-prefix-init && \
   chmod 644 /etc/supervisor.d/*.ini && \
   chmod 644 /defaults/* && \
+  chmod 644 /usr/share/novnc/app/webtop-adaptive.js && \
+  echo "**** the adaptive-resize script must be present (it arrives with COPY /root) ****" && \
+  test -s /usr/share/novnc/app/webtop-adaptive.js && \
+  grep -q "app/webtop-adaptive.js" /usr/share/novnc/vnc.html && \
   chmod 644 \
     /usr/share/applications/wine-webtop.desktop \
     /etc/xdg/mimeapps.list && \

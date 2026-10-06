@@ -7,7 +7,9 @@
 #      are RUNNING
 #   2. the VNC server completes an RFB handshake
 #   3. the framebuffer starts at the configured size
-#   4. noVNC answers over HTTP
+#   4. noVNC answers over HTTP, and the adaptive-resize override is served,
+#      referenced by vnc.html, applied in a real browser, and overridable
+#      from the URL
 #   5. REGRESSION: Chromium launched via the Openbox menu command really opens
 #      a browser window (this is the "webbrowser 打不开" bug)
 #   6. ADAPTIVE RESOLUTION: with that window on screen, the server honours a
@@ -208,6 +210,37 @@ if [ "$CODE" = "200" ]; then
   fi
 else
   bad "noVNC returned '${CODE}' (probe ${PROBE_HOST}:${PORT})"
+fi
+
+# --- 5b. the adaptive-resize override must run in a real browser --------
+# noVNC lets a value saved in the browser's localStorage win over the image's
+# default, which is what used to stop the automatic resize. app/webtop-adaptive.js
+# is loaded before noVNC initialises and stores resize=remote, then reports what
+# it did on <html data-webtop-resize="...">. Checking that attribute in a real
+# browser's DOM is the end-to-end proof that the override ran.
+ADAPT_JS="$(curl -s -m 20 "http://${PROBE_HOST}:${PORT}/app/webtop-adaptive.js" 2>/dev/null)"
+if echo "$ADAPT_JS" | grep -q "webtop-adaptive"; then
+  ok "the adaptive-resize script is served by noVNC"
+else
+  bad "app/webtop-adaptive.js is not served (or is not our script)"
+fi
+if docker exec "$NAME" sh -c 'grep -q "app/webtop-adaptive.js" /usr/share/novnc/vnc.html'; then
+  ok "vnc.html loads the adaptive-resize script"
+else
+  bad "vnc.html does not reference app/webtop-adaptive.js"
+fi
+ADAPT_DOM="$(docker exec "$NAME" su -s /bin/sh abc -c 'HOME=/tmp/domcheck XDG_RUNTIME_DIR=/tmp/domcheck chromium --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --user-data-dir=/tmp/domcheck --virtual-time-budget=8000 --dump-dom http://127.0.0.1:3000/ 2>/dev/null | grep -c "data-webtop-resize=\"remote\""' 2>/dev/null | tr -d '[:space:]')"
+if [ "${ADAPT_DOM:-0}" -ge 1 ] 2>/dev/null; then
+  ok "a real browser applied the override (data-webtop-resize=remote)"
+else
+  bad "the adaptive-resize override did not run in the browser (headless Chromium DOM)"
+fi
+# ...and an explicit URL parameter must still win over the override.
+ADAPT_URL="$(docker exec "$NAME" su -s /bin/sh abc -c 'HOME=/tmp/domcheck2 XDG_RUNTIME_DIR=/tmp/domcheck2 chromium --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --user-data-dir=/tmp/domcheck2 --virtual-time-budget=8000 --dump-dom "http://127.0.0.1:3000/?resize=off" 2>/dev/null | grep -c "data-webtop-resize=\"off\""' 2>/dev/null | tr -d '[:space:]')"
+if [ "${ADAPT_URL:-0}" -ge 1 ] 2>/dev/null; then
+  ok "?resize=off still overrides the default (escape hatch works)"
+else
+  bad "the ?resize=off URL parameter was not honoured"
 fi
 
 # --- 6. REGRESSION: Chromium opens from the menu command -----------------

@@ -26,6 +26,10 @@
    [info] idle desktop framebuffer has 2 unique colours (panel-less: expect ~2)
    [ OK ] noVNC responds HTTP 200
    [ OK ] served page is the noVNC UI
+   [ OK ] the adaptive-resize script is served by noVNC
+   [ OK ] vnc.html loads the adaptive-resize script
+   [ OK ] a real browser applied the override (data-webtop-resize=remote)
+   [ OK ] ?resize=off still overrides the default (escape hatch works)
    waiting 40s for Chromium to map a window...
    [ OK ] Chromium opens a real window via the menu launcher
           _NET_WM_NAME(UTF8_STRING) = "about:blank - Chromium"
@@ -51,6 +55,6 @@
    [ OK ] desktop still paints after the Chromium and Wine tests (908 unique colours)
 
 ==============================================
- passed: 33   failed: 0
+ passed: 37   failed: 0
 ==============================================
  Tip: inspect with  docker exec -it wt-verify-novnc supervisorctl status

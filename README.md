@@ -12,7 +12,9 @@
 >    导致 tint2 段错误"那套问题一起删掉了，见下方历史记录）。
 > 2. **分辨率自适应**：`Xvfb + x11vnc` 换成单个 **TigerVNC Xvnc** ——
 >    x11vnc 会丢弃浏览器发来的 `SetDesktopSize`（实测），Xvnc 会照做，
->    于是桌面尺寸随浏览器窗口变化。
+>    于是桌面尺寸随浏览器窗口变化。另加 `app/webtop-adaptive.js`：在 noVNC
+>    初始化前把 `resize=remote` 写进浏览器存储，避免"浏览器里存过旧设置导致
+>    自动适配永远不触发"（见下文说明；URL 显式参数仍然优先）。
 >
 > 早前版本：v2 去掉 `docker-cli`、加入 **Wine 10.7**；v1（带 docker cli）
 > 的 Dockerfile 存于 `novnc/alpine-openbox/archive/Dockerfile.v1-dockercli`。
@@ -68,7 +70,7 @@ Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC
 │           └── openbox-lsio-style       # 施加 LinuxServer 的 openbox 样式
 ├── scripts/
 │   ├── build.sh                 # 一键构建
-│   ├── verify.sh                # 一键验证（33 项检查）
+│   ├── verify.sh                # 一键验证（37 项检查）
 │   ├── chromium-regression.sh   # Chromium 菜单启动回归测试
 │   ├── wine-regression.sh       # Wine 回归测试（64/32 位、字体、窗口）
 │   ├── vncprobe.py              # VNC 像素探测（数颜色，verify.sh 用）
@@ -141,6 +143,48 @@ docker run -d --name webtop --restart unless-stopped \
 发给服务器，桌面（含已开窗口）随之重排；拖动/缩放浏览器窗口会再次触发。
 所以 `VNC_RESOLUTION` 只是**起始尺寸**，既不是下限也不是上限：连接后浏览器
 可以把它调大也能调小（实测 800×600 ~ 1920×1080 都照做）。
+
+### 让"自动"真的自动（v3.1）
+
+noVNC 解析设置值的顺序是（`app/ui.js` 的 `initSetting`）：
+
+```
+val = WebUtil.getConfigVar('resize');        // 1. URL 参数 ?resize=... / #resize=...
+if (val === null) val = WebUtil.readSetting('resize', defVal);
+                                         // 2. 先 localStorage，再默认值
+```
+
+也就是说：**浏览器里存过的值会盖掉镜像里的默认值**。旧版页面（默认还是
+`resize=off`）在某个浏览器里存过 `off`/`scale`，那个浏览器就再也不会自动适配
+了——改镜像默认值救不了它。
+
+所以镜像里加了 `app/webtop-adaptive.js`，它被放在 **noVNC 初始化之前**加载
+（`vnc.html` 里紧跟 `error-handler.js`），于是可以抢在解析之前把
+`resize=remote` 写进存储：
+
+- 浏览器里存着 `off`/`scale` → 被改写成 `remote`，自动适配恢复；
+- URL 上显式写了 `?resize=off`（或 `scale`）→ **仍然优先**，脚本不干预；
+- 存储不可用（隐私模式）→ 退回镜像默认值 `remote`，依然自适应。
+
+没有用 noVNC 的 `mandatory.json`：那个会把设置项**锁死并置灰**，等于把选择权
+彻底拿走；现在 URL 参数仍然是逃生口。
+
+```
+?resize=remote   默认，且会被这个脚本固化（推荐）
+?resize=scale    只在浏览器端缩放，不动服务器
+?resize=off      完全固定，不缩放也不改尺寸（截图/自动化用）
+```
+
+脚本会把结果写在 `<html data-webtop-resize="...">` 上，`verify.sh` 用无头
+Chromium 打开真实页面读这个属性，确认覆盖真的生效（并且 `?resize=off` 仍然
+被尊重）。
+
+行为验证（在浏览器 profile 里真的种一个 `resize=scale`，再用它打开页面）：
+
+| 浏览器里存的 | URL | 桌面尺寸（起始 1280×800，窗口 1000×700） |
+|---|---|---|
+| `scale` | 无参数 | **→ 1000×561**：覆盖生效，自动适配 ✅ |
+| `scale` | `?resize=scale` | 保持 1280×800：显式参数优先，不干预 ✅ |
 
 实现关键：v2 用的 `x11vnc` **会丢弃这个请求**（实测 1280x800 请求 1600x900
 仍是 1280x800），v3 换成 TigerVNC 的 **Xvnc** 才会照做（同一次实测变成
@@ -471,7 +515,7 @@ WARN exited: tint2 (terminated by SIGSEGV (core dumped); not expected)
 PROBE_HOST=<主机IP> ./scripts/verify.sh
 ```
 
-实测结果（全新 volume，**33/33 通过**，完整日志见 `logs/verify-novnc-v3-*.log`）：
+实测结果（全新 volume，**37/37 通过**，完整日志见 `logs/verify-novnc-v3-*.log`）：
 
 ```
    [ OK ] container is running
@@ -497,6 +541,10 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
    [info] idle desktop framebuffer has 2 unique colours (panel-less: expect ~2)
    [ OK ] noVNC responds HTTP 200
    [ OK ] served page is the noVNC UI
+   [ OK ] the adaptive-resize script is served by noVNC
+   [ OK ] vnc.html loads the adaptive-resize script
+   [ OK ] a real browser applied the override (data-webtop-resize=remote)
+   [ OK ] ?resize=off still overrides the default (escape hatch works)
    [ OK ] Chromium opens a real window via the menu launcher
           _NET_WM_NAME(UTF8_STRING) = "about:blank - Chromium"
    [ OK ] desktop resizes on request (SetDesktopSize honoured, after=(1500, 850))
@@ -519,7 +567,7 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
           window=_NET_WM_NAME(UTF8_STRING) = "Untitled - Notepad" WM_CLASS(STRING) = "notepad.exe", "notepad.exe"
    [ OK ] desktop still paints after the Chromium and Wine tests (908 unique colours)
 
- passed: 33   failed: 0
+ passed: 37   failed: 0
 ```
 
 > `vncprobe.py` 会真的完成 RFB 握手并统计整屏颜色数 —— 这是"桌面确实在渲染"
