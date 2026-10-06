@@ -124,6 +124,21 @@ if docker exec "$NAME" sh -c 'test ! -e /usr/bin/wine-webtop && test ! -e /usr/b
 else
   bad "wine-specific files are still baked into the image"
 fi
+# The menu the user actually gets: 10-setup copies /defaults/menu.xml into the
+# home directory on first run, and that copy is what Openbox shows.
+if docker exec "$NAME" sh -c 'grep -qi wine "$HOME/.config/openbox/menu.xml" 2>/dev/null && exit 1 || exit 0'; then
+  ok "the seeded desktop menu has no Wine entries"
+else
+  bad "the seeded menu still offers Wine entries (see /defaults/menu.xml.v2)"
+fi
+# An existing volume holds an older default and is only replaced when it matches
+# a previously shipped one -- so the wine-era menu must ship as an upgrade
+# target, otherwise right-click keeps showing Wine forever.
+if docker exec "$NAME" sh -c 'test -s /defaults/menu.xml.v2 && grep -qi wine /defaults/menu.xml.v2'; then
+  ok "the wine-era menu is shipped as an upgrade target (menu.xml.v2)"
+else
+  bad "menu.xml.v2 is missing: volumes seeded by the wine-era image will never upgrade"
+fi
 
 # --- 1d. REGRESSION: the Openbox menu file must actually parse -----------
 # It used to contain a double hyphen inside an XML comment; libxml2 rejects the
@@ -262,8 +277,16 @@ docker exec "$NAME" chmod 755 /tmp/chromium-regression.sh > /dev/null 2>&1
 docker exec "$NAME" rm -f /abc/chromium-regression.txt > /dev/null 2>&1
 docker exec -d "$NAME" /tmp/chromium-regression.sh
 
-echo "   waiting 40s for Chromium to map a window..."
-sleep 40
+# Poll instead of sleeping a fixed 40s: on a loaded host (another verification
+# running, a stack being recreated) the very first Chromium start on a fresh
+# volume can take over a minute, and a fixed wait turns that into a false
+# failure of the regression this check exists to catch.
+echo "   waiting up to 120s for Chromium to map a window..."
+for _ in $(seq 1 24); do
+  CHROME_OUT="$(docker exec "$NAME" cat /abc/chromium-regression.txt 2>/dev/null)"
+  echo "$CHROME_OUT" | grep -qi chromium && break
+  sleep 5
+done
 CHROME_OUT="$(docker exec "$NAME" cat /abc/chromium-regression.txt 2>/dev/null)"
 
 if echo "$CHROME_OUT" | grep -qi "chromium"; then

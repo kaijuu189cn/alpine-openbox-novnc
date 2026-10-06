@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Openbox root menu for webtop:alpine-openbox.
+
+  !! XML comments may not contain a DOUBLE HYPHEN. libxml2, which Openbox uses,
+  !! then rejects the ENTIRE file: the root menu silently becomes empty and
+  !! right-clicking the desktop shows nothing. The Chromium flag mentioned
+  !! below is therefore written without its leading dashes; do not add them
+  !! back. Until this was corrected the menu never loaded at all.
+
+  The Chromium entry calls /usr/bin/chromium-webtop, NOT /usr/bin/chromium.
+  Raw `chromium` inherits Alpine's CHROMIUM_FLAGS (ozone-platform-hint=auto),
+  which makes it probe for Wayland and leave an unmapped 10x10 stub window, and
+  it stops on the first-run Terms of Service dialog. The wrapper pins X11 and
+  skips first-run, so the browser actually opens. See that script for details.
+
+  Item icons follow linuxserver/webtop:alpine-openbox, whose menu.xml puts the
+  48x48 hicolor/pixmaps icons on its entries (its <menu> settings, including
+  showIcons, are identical to Alpine's stock rc.xml). Every path below is
+  verified to exist in this image; entries Wine ships no icon for are left bare.
+
+  The Wine entries call /usr/bin/wine-webtop, NOT /usr/bin/wine: a menu action
+  inherits a bare environment, and the wrapper is what pins HOME/DISPLAY and
+  builds the Wine prefix on first use. See that script for details.
+-->
+<openbox_menu xmlns="http://openbox.org/3.4/menu">
+
+<!-- Wine submenu: included into root-menu below via <menu id="wine-menu"/>. -->
+<menu id="wine-menu" label="Wine (Windows apps)">
+  <item label="Wine File Manager (C:)">
+    <action name="Execute"><command>/usr/bin/wine-webtop winefile</command></action>
+  </item>
+  <item label="Notepad">
+    <action name="Execute"><command>/usr/bin/wine-webtop notepad</command></action>
+  </item>
+  <item label="Explorer (drives)">
+    <action name="Execute"><command>/usr/bin/wine-webtop explorer</command></action>
+  </item>
+  <separator />
+  <item label="Wine Configuration (winecfg)">
+    <action name="Execute"><command>/usr/bin/wine-webtop winecfg</command></action>
+  </item>
+  <item label="Registry Editor">
+    <action name="Execute"><command>/usr/bin/wine-webtop regedit</command></action>
+  </item>
+  <item label="Uninstall Software">
+    <action name="Execute"><command>/usr/bin/wine-webtop uninstaller</command></action>
+  </item>
+  <separator />
+  <item label="Command Prompt" icon="/usr/share/pixmaps/xterm-color_48x48.xpm">
+    <action name="Execute"><command>/usr/bin/wine-webtop cmd</command></action>
+  </item>
+  <item label="How to install an .exe">
+    <action name="Execute">
+      <command>/usr/bin/xterm -e /bin/bash -lc 'echo "Start Windows software from a terminal:"; echo; echo "  wine-webtop ~/Desktop/setup.exe"; echo; echo ".exe files in the file manager also open with Wine."; echo; read -p "press Enter to close"'</command>
+    </action>
+  </item>
+</menu>
+
+<menu id="root-menu" label="MENU">
+  <item label="Web Browser (Chromium)" icon="/usr/share/icons/hicolor/48x48/apps/chromium.png">
+    <action name="Execute">
+      <command>/usr/bin/chromium-webtop</command>
+      <startupnotify><enabled>yes</enabled></startupnotify>
+    </action>
+  </item>
+  <separator />
+  <item label="Terminal (st)" icon="/usr/share/pixmaps/xterm-color_48x48.xpm">
+    <action name="Execute"><command>/usr/bin/st</command></action>
+  </item>
+  <item label="Terminal (xterm)" icon="/usr/share/pixmaps/xterm-color_48x48.xpm">
+    <action name="Execute"><command>/usr/bin/xterm</command></action>
+  </item>
+  <item label="Text Editor" icon="/usr/share/icons/hicolor/48x48/apps/org.xfce.mousepad.png">
+    <action name="Execute"><command>/usr/bin/mousepad</command></action>
+  </item>
+  <separator />
+  <menu id="wine-menu" label="Wine (Windows apps)" />
+  <separator />
+  <item label="Reconfigure Openbox">
+    <action name="Reconfigure" />
+  </item>
+  <item label="Restart Openbox">
+    <action name="Restart" />
+  </item>
+</menu>
+
+</openbox_menu>

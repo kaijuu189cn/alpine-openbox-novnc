@@ -1,0 +1,32 @@
+# Openbox autostart for webtop:alpine-openbox (noVNC).
+#
+# Started via openbox-session. Keep every entry defensive: a missing optional
+# binary must never abort the session.
+#
+# The tint2 panel is NOT started here: it is a supervised service now
+# (/etc/supervisor.d/tint2.ini). It used to be launched from this file, which
+# meant nothing restarted it after the X error that building the Wine prefix
+# causes -- see that .ini for the measurements.
+
+# Prime the Chromium profile on first boot so the user's first menu click does
+# not pay the profile-creation cost (and so the first-run state is settled).
+if [ ! -d "$HOME/.config/chromium" ]; then
+  mkdir -p "$HOME/.config/chromium" 2>/dev/null || true
+fi
+
+# Prime the Wine prefix in the BACKGROUND on first boot.
+#
+# wineboot takes ~10-30s. Doing it here means the noVNC desktop appears
+# immediately, and the first click on a Wine menu entry does not stare at a
+# blank screen. wine-prefix-init is flock-guarded and idempotent, so a menu
+# click arriving while this runs simply waits for it (see that script).
+#
+# --headless is important, not cosmetic: Wine's process churn (services.exe,
+# winedevice.exe, explorer.exe /desktop) creates and destroys X windows, and
+# tint2 segfaults once per burst of it. Priming with a display cost 14 tint2
+# crashes over the first ~2 minutes of a fresh volume; priming without one
+# costs zero, because wine never connects to X at all.
+if [ ! -d "${WINEPREFIX:-$HOME/.wine}/drive_c/windows" ] && \
+   [ -x /usr/bin/wine-prefix-init ]; then
+  ( /usr/bin/wine-prefix-init --headless >>"$HOME/.wine-init.log" 2>&1 & )
+fi

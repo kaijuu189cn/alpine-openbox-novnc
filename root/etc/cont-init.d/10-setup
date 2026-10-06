@@ -23,10 +23,11 @@ mkdir -p \
 # --- Openbox: menu + autostart -------------------------------------------
 # On a fresh volume there is no user copy, so the default is installed. On an
 # existing volume we must not clobber anything the user edited -- but a volume
-# created by the pre-Wine image (v1) still holds the OLD default, which would
-# silently hide the new Wine menu entries. So: install when missing, refresh
-# when the file is byte-identical to a default we shipped before, leave every
-# other file alone.
+# seeded by an earlier image still holds an older default, which would keep
+# showing whatever we have changed since (the Wine submenu, for example, whose
+# commands point at helpers this image no longer ships). So: install when
+# missing, refresh when the file is byte-identical to a default we shipped
+# before (menu.xml.v1/.v2, autostart.v1/.v2), leave every other file alone.
 seed_default() {  # seed_default <name under /defaults> <target path>
   local name="$1" target="$2" old
   [ -f "/defaults/$name" ] || return 0
