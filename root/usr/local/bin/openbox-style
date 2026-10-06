@@ -1,39 +1,37 @@
 #!/bin/sh
 #
-# openbox-lsio-style -- give this image the LinuxServer.io openbox look.
+# openbox-style -- apply this image's openbox appearance.
 #
-# WHERE THE VALUES COME FROM
-# --------------------------
-# Diffed linuxserver/webtop:alpine-openbox (`webtop1`, /config/.config/openbox/
-# rc.xml, 790 lines) against Alpine's stock /etc/xdg/openbox/rc.xml (743 lines).
-# Ignoring whitespace and line wrapping, there are exactly THREE semantic
-# differences, and everything else -- the <menu> delays, showIcons, the
-# mousebinds (including Root Right-click -> root-menu), focus/placement/
-# dragThreshold, and all six theme fonts (sans 8 bold titles, 9 normal menus) --
-# is identical:
+# OUR LOOK
+# --------
+# Alpine's openbox defaults are deliberately plain. This image sets:
 #
-#   1. theme name       Clearlooks   -> Artwiz-boxed
-#   2. titleLayout      NLIMC        -> NLMC   (no minimise button)
-#   3. one extra keybind C-S-d        -> ToggleDecorations
+#   theme        Artwiz-boxed   (ships inside Alpine's own openbox package as a
+#                                text themerc, so there is nothing extra to
+#                                install and no third-party theme to track)
+#   titleLayout  NLMC           (icon, label, maximise, close -- no minimise)
+#   keybind      C-S-d          -> ToggleDecorations
 #
-# Artwiz-boxed is not a third-party theme: Alpine's own `openbox` package ships
-# it as a 3.7 kB text themerc (/usr/share/themes/Artwiz-boxed/openbox-3), so no
-# theme files need to be copied at all.
+# Everything else -- menu delays, showIcons, the mousebinds (including
+# Root Right-click -> root-menu), focus/placement/dragThreshold and the six
+# theme fonts (sans 8 bold titles, 9 normal menus) -- stays exactly as Alpine
+# ships it. Those defaults are what our functional fix (the working desktop
+# menu) relies on, so they are left alone on purpose.
 #
 # The script is idempotent and fails loudly if the expected stock values are not
-# present, so a future Alpine that renames the default theme breaks the build
+# present, so an Alpine release that renames its default theme breaks the build
 # instead of silently shipping the old look.
 #
 # USAGE
-#   openbox-lsio-style [/etc/xdg/openbox/rc.xml]
+#   openbox-style [/etc/xdg/openbox/rc.xml]
 #
 set -eu
 
 RC="${1:-/etc/xdg/openbox/rc.xml}"
 
-[ -f "$RC" ] || { echo "openbox-lsio-style: no such file: $RC" >&2; exit 1; }
+[ -f "$RC" ] || { echo "openbox-style: no such file: $RC" >&2; exit 1; }
 
-fail() { echo "openbox-lsio-style: $*" >&2; exit 1; }
+fail() { echo "openbox-style: $*" >&2; exit 1; }
 
 # --- 1/2. theme name + title layout --------------------------------------
 # Only patch the stock values; if the file is already styled this is a no-op.
@@ -62,7 +60,7 @@ if grep -q 'key="C-S-d"' "$RC"; then
   echo "keybind C-S-d already present"
 else
   grep -q '</keyboard>' "$RC" || fail "no </keyboard> in $RC; cannot add the C-S-d keybind"
-  tmp="${RC}.lsio.$$"
+  tmp="${RC}.style.$$"
   awk '
     /<\/keyboard>/ && !done {
       print "  <keybind key=\"C-S-d\">"
@@ -79,6 +77,6 @@ fi
 # --- verify ---------------------------------------------------------------
 grep -q '<name>Artwiz-boxed</name>' "$RC" || fail "theme name did not land in $RC"
 grep -q '<titleLayout>NLMC</titleLayout>' "$RC" || fail "titleLayout did not land in $RC"
-grep -q 'key="C-S-d"' "$RC" || fail "C-S-d keybind did not land in $RC"
+grep -q 'key="C-S-d"' "$RC" || fail "keybind C-S-d did not land in $RC"
 
-echo "openbox-lsio-style: $RC styled"
+echo "openbox-style: $RC styled"

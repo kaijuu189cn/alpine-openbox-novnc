@@ -14,8 +14,8 @@
 #       with BUILD_PACKAGES="wine"). The image no longer mounts
 #       /var/run/docker.sock (see docker-compose.yml) and instead runs Windows
 #       software through Wine. The openbox look is copied from
-#       linuxserver/webtop:alpine-openbox (Artwiz-boxed theme, NLMC title
-#       layout, Noto Sans) -- see the styling step near the end of this file.
+#       our own openbox look (Artwiz-boxed theme, NLMC title layout, Noto
+#       Sans) -- see the styling step near the end of this file.
 #   v3 (this file): the tint2 top panel is GONE, and Xvfb + x11vnc have been
 #       replaced by a single TigerVNC Xvnc, which is what makes the desktop
 #       resolution adaptive (it honours the viewer's SetDesktopSize request;
@@ -23,10 +23,10 @@
 #
 # WHY THIS EXISTS
 # ---------------
-# The previous build reused LinuxServer's baseimage-selkies. That base image is
-# built around selkies/pixelflux, which made the stack hard to reason about and
-# tied us to a moving, sometimes-broken upstream. This image drops that
-# dependency entirely:
+# A desktop image you can reason about end to end: the base is the official
+# `alpine:latest`, every package comes from Alpine's own repositories, and the
+# session is four processes you can name. No third-party base image, nothing to
+# track but Alpine itself.
 #
 #   Xvnc (X server + VNC server in one process)
 #     |
@@ -143,7 +143,7 @@ ARG APK_MIRROR=mirror.nju.edu.cn
 # package that duplicates a dependency costs nothing, and the prune steps below
 # still apply. Nothing else in the image is wine-aware any more: no helper
 # scripts, no menu entries, no .exe association -- `wine` from a terminal is the
-# interface (WINEPREFIX defaults to ~/.wine, i.e. /config/.wine).
+# interface (WINEPREFIX defaults to ~/.wine, i.e. /abc/.wine).
 ARG BUILD_PACKAGES=""
 
 LABEL build_version="webtop-novnc version:- ${VERSION} Build-date:- ${BUILD_DATE}"
@@ -154,8 +154,8 @@ LABEL org.opencontainers.image.title="webtop-alpine-openbox-novnc"
 # China mirror + upgrade to the current Alpine release.
 #
 # The base is `alpine:latest` -- the newest stable release -- so a rebuild
-# tracks Alpine instead of pinning a branch (the old linuxserver image was
-# stuck on 3.21 for 14 months). The sed below only swaps the CDN host for a
+# tracks Alpine instead of pinning a branch. The sed below only swaps the CDN
+# host for a
 # domestic mirror; the v3.xx path comes from whatever the base image ships, so
 # both stay in step. `apk upgrade` then picks up the latest point release.
 # ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ RUN \
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     DISPLAY=:1 \
-    HOME=/config \
+    HOME=/abc \
     TITLE=webtop \
     VNC_PORT=5901 \
     NOVNC_PORT=3000 \
@@ -183,7 +183,7 @@ ENV LANG=C.UTF-8 \
     VNC_DEPTH=24
 # NOTE: no WINEPREFIX/WINEDEBUG/WINEDLLOVERRIDES here. If you add wine through
 # BUILD_PACKAGES, pass whatever you need with -e (WINEPREFIX defaults to
-# ~/.wine, which is /config/.wine).
+# ~/.wine, which is /abc/.wine).
 
 # ---------------------------------------------------------------------------
 # Packages + prune, in ONE RUN.
@@ -197,7 +197,7 @@ ENV LANG=C.UTF-8 \
 #   core      : chromium, openbox (+ whatever BUILD_PACKAGES asks for)
 #   session   : tigervnc (Xvnc), novnc, websockify, supervisor, dbus(+x11)
 #   tools     : st, mousepad, xterm, xdg-utils, setxkbmap
-#   fonts/i18n: font-noto (Latin UI font, matches the LinuxServer look),
+#   fonts/i18n: font-noto (the Latin UI font our theme asks for),
 #               font-noto-cjk (Chinese), font-dejavu, adwaita-icon-theme
 #
 # NOTE: docker-cli is deliberately NOT installed any more. The desktop cannot
@@ -295,25 +295,22 @@ RUN \
   echo "**** create abc user ****" && \
   addgroup -g 1000 abc && \
   adduser -u 1000 -G abc -s /bin/bash -D abc && \
-  mkdir -p /config /defaults && \
-  chown -R abc:abc /config
+  mkdir -p /abc /defaults && \
+  chown -R abc:abc /abc
 
 # local files: supervisor programs, init script, openbox defaults, noVNC modules
 COPY /root /
 
 # ---------------------------------------------------------------------------
-# LinuxServer.io openbox appearance (copied from linuxserver/webtop:alpine-openbox)
+# Openbox appearance
 #
-# Diffed that image's /config/.config/openbox/rc.xml (790 lines, container
-# `webtop1`) against Alpine's stock /etc/xdg/openbox/rc.xml: once whitespace and
-# line wrapping are ignored there are exactly THREE semantic differences, and
-# the menu delays, mousebinds (including Root Right-click -> root-menu), focus /
-# placement / dragThreshold and all six theme fonts (sans 8 bold titles, 9
-# normal menus) are identical:
+# Alpine ships a plain-but-sane rc.xml. We change three things in it, all of
+# them cosmetic, and leave the rest -- including the mousebinds our desktop menu
+# depends on -- exactly as Alpine wrote it:
 #
 #   theme        Clearlooks  -> Artwiz-boxed   (ships inside Alpine's openbox
 #                                               package as a text themerc, so
-#                                               nothing needs to be copied)
+#                                               nothing extra to install)
 #   titleLayout  NLIMC       -> NLMC           (no minimise button)
 #   keybind      + C-S-d     -> ToggleDecorations
 #
@@ -321,17 +318,18 @@ COPY /root /
 # changes, so a future Alpine that renames its default theme fails the build
 # instead of silently shipping a half-styled image.
 #
+# font-noto is installed because our rc.xml asks for the font family "sans":
+# without Noto that resolves to DejaVu here, and the window titles would not
+# look the way the screenshots show.
+#
 # The styled file is installed twice: as the system default (used when the user
 # has no rc.xml of their own) and as /defaults/rc.xml, which 10-setup copies
-# into the user's config on first run. font-noto is installed for the same
-# reason the LinuxServer image has it -- their rc.xml asks for the font family
-# "sans", and without Noto that resolves to DejaVu here, so the window titles
-# would not actually look the same.
+# into the user's config on first run.
 # ---------------------------------------------------------------------------
 RUN \
-  echo "**** apply LinuxServer.io openbox style ****" && \
-  chmod 755 /usr/local/bin/openbox-lsio-style && \
-  /usr/local/bin/openbox-lsio-style /etc/xdg/openbox/rc.xml && \
+  echo "**** apply our openbox style ****" && \
+  chmod 755 /usr/local/bin/openbox-style && \
+  /usr/local/bin/openbox-style /etc/xdg/openbox/rc.xml && \
   cp /etc/xdg/openbox/rc.xml /defaults/rc.xml && \
   echo "**** validate the styled rc.xml ****" && \
   python3 -c "\
@@ -361,6 +359,6 @@ RUN \
 
 EXPOSE 3000
 
-VOLUME /config
+VOLUME /abc
 
 ENTRYPOINT ["/usr/bin/start-desktop"]

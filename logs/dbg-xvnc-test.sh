@@ -20,7 +20,7 @@ echo "=== can user abc connect? ==="
 su -s /bin/sh abc -c 'DISPLAY=:9 xset q >/dev/null 2>&1 && echo AUTH-OK-as-abc || echo AUTH-FAIL-as-abc'
 
 echo "=== start openbox as abc ==="
-su -s /bin/sh abc -c 'DISPLAY=:9 HOME=/config openbox --sm-disable >/tmp/ob.log 2>&1 &'
+su -s /bin/sh abc -c 'DISPLAY=:9 HOME=/abc openbox --sm-disable >/tmp/ob.log 2>&1 &'
 sleep 3
 
 echo "=== chromium under Xvnc (as abc) ==="

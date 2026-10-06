@@ -1,7 +1,8 @@
 # alpine:openbox-novnc
 
 一个从头构建的 Alpine + Openbox 桌面镜像，通过 **VNC / noVNC** 在浏览器中访问。
-**完全不依赖 LinuxServer 的 selkies 基础镜像**，因此不受上游停更影响。
+基础镜像就是官方 **`alpine:latest`**，所有组件都来自 Alpine 官方仓库——
+没有第三方基础镜像，重建时只需跟随 Alpine 本身。
 
 镜像刻意保持最小：**chromium + openbox + Xvnc**，加上会话运行必需的组件。
 想再装别的软件（wine、文件管理器、播放器……）用构建参数 **`BUILD_PACKAGES`**。
@@ -14,14 +15,14 @@
 >    `wine-webtop`/`wine-prefix-init`、Wine 右键菜单、`.exe` MIME 关联——**全部删除**：
 >    需要 wine 就 `BUILD_PACKAGES=wine` 构建，然后在终端里直接用 `wine`。
 > 2. **镜像改名**：`webtop:alpine-openbox-novnc` → **`alpine:openbox-novnc`**。
-> 3. **其他版本资源删除**：`legacy/`（v1 + 两个 selkies 版本）与
+> 3. **其他版本资源删除**：`legacy/`（v1 与两个早期变体）以及
 >    `scripts/fetch-baseimage.sh` 一并删掉，仓库只剩这一条线；旧版本只能从
 >    git 历史里找。
 >
 > 更早：v3 去掉顶部面板、`Xvfb + x11vnc` 换成 Xvnc（分辨率自适应）；
 > v2 去掉 `docker-cli` 并加入 Wine。
 
-## 架构（已从 selkies 换成 noVNC）
+## 架构
 
 ```
 Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC 服务端，一个进程
@@ -33,19 +34,17 @@ Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC
 全部组件由 **supervisor** 托管，任一进程崩溃会自动重启。
 所有软件包来自 Alpine 官方仓库，重建时只需跟随 Alpine 本身。
 
-| 项目 | 旧 `linuxserver/webtop:alpine-openbox` | 本镜像 |
-|---|---|---|
-| 构建时间 | 2025-06-24（14 个月前） | 本次构建 |
-| Alpine | **3.21.3** | **3.24.2**（`FROM alpine:latest`，跟着最新稳定版走） |
-| Chromium | 136.0.7103.113 | **跟随 Alpine 仓库** |
-| Windows 程序 | 无 | **可选**：`BUILD_PACKAGES=wine`（Alpine 的 11.x，含 32 位 WoW64） |
-| 串流层 | selkies / pixelflux | **Xvnc (TigerVNC 1.16.2) + noVNC 1.6.0** |
-| 分辨率 | 自适应（selkies） | **自适应（Xvnc SetDesktopSize）** |
-| 状态栏面板 | 无 | **无（v3 移除 tint2）** |
-| 基础镜像 | `baseimage-selkies:alpine321` | **`alpine:latest` 官方（3.24.2）** |
-| docker cli | 有 | **无（v2 移除）** |
-| 镜像体积 | 2.59 GB | **2.07 GB**（含 Wine 410 MB、Chromium 308 MB） |
-| Web 端口 | 3001 | **3000** |
+| 项目 | 本镜像 |
+|---|---|
+| 基础镜像 | **`alpine:latest` 官方（当前 3.24.2）** |
+| Chromium | 跟随 Alpine 仓库（当前 152.x） |
+| 串流层 | **Xvnc (TigerVNC 1.16.2) + noVNC 1.6.0** |
+| 分辨率 | **自适应**（Xvnc 的 SetDesktopSize，浏览器窗口多大桌面就多大） |
+| Windows 程序 | **可选**：`BUILD_PACKAGES=wine`（Alpine 的 11.x，含 32 位 WoW64） |
+| 状态栏面板 | **无**（v3 移除 tint2） |
+| docker cli | **无**（v2 移除） |
+| 镜像体积 | **1.47 GB**（不含 wine；`BUILD_PACKAGES=wine` 时 2.07 GB） |
+| Web 端口 | **3000** |
 
 ## 目录结构
 
@@ -57,13 +56,13 @@ Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC
 │   ├── etc/cont-init.d/10-setup #   首次运行初始化（含默认文件升级）
 │   ├── defaults/                #   menu.xml / rc.xml / autostart（*.v1 用于安全升级比对）
 │   ├── usr/bin/                 #   start-desktop / chromium-webtop
-│   ├── usr/local/bin/           #   openbox-lsio-style（LinuxServer 样式）
+│   ├── usr/local/bin/           #   openbox-style（本镜像的 openbox 外观）
 │   └── usr/share/novnc/app/     #   webtop-adaptive.js（强制自适应分辨率）
 ├── docker-compose.yml           # 构建 + 运行（默认 3000，可用 .env 覆盖；BUILD_PACKAGES 追加软件）
 ├── .env.example                 # WEB_PORT / CONFIG_DIR 等可调项模板
 ├── scripts/
 │   ├── build.sh                 # 可选构建入口（传 BUILD_DATE + 别名标签）
-│   ├── verify.sh                # 一键验证（默认镜像 29 项，带 wine 时 +7 项，自动判断）
+│   ├── verify.sh                # 一键验证（默认镜像 29 项，带 wine 时 36 项，自动判断）
 │   ├── chromium-regression.sh   # Chromium 菜单启动回归
 │   ├── wine-regression.sh       # Wine 回归（仅当镜像里有 wine 时才会被 verify 调用）
 │   ├── vncprobe.py              # VNC 像素探测（数颜色）
@@ -85,7 +84,7 @@ Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC
 ```bash
 docker compose up -d --build     # 构建镜像并启动，UI 在 http://<主机IP>:3000
 docker compose logs -f           # 入口横幅 + supervisor 日志
-docker compose down              # 停掉（./config 里的状态都保留）
+docker compose down              # 停掉（./abc 里的状态都保留）
 ```
 
 compose 文件里带 `build:` 段（context = 仓库根，靠 `.dockerignore` 只送
@@ -99,7 +98,7 @@ compose 文件里带 `build:` 段（context = 仓库根，靠 `.dockerignore` �
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `WEB_PORT` | `3000` | 发布到宿主机的端口（容器内固定 3000） |
-| `CONFIG_DIR` | `./config` | `/config` 的位置：Wine 前缀、Chromium profile、桌面配置 |
+| `CONFIG_DIR` | `./abc` | `/abc` 的位置：Wine 前缀、Chromium profile、桌面配置 |
 | `APK_MIRROR` | `mirror.nju.edu.cn` | 构建时的 Alpine 镜像源 |
 | `TAG` | `novnc` | 镜像别名标签（`webtop:alpine-openbox-<TAG>`） |
 
@@ -115,7 +114,7 @@ Dockge 这类工具是「一个目录一个 stack」：目录里放 `compose.yam
 ```
 /data/stacks/webtop3/
 ├── compose.yaml      # 服务定义，写 image: alpine:openbox-novnc
-└── data/             # 挂到容器的 /config：Wine 前缀、Chromium profile、桌面文件
+└── data/             # 挂到容器的 /abc：Wine 前缀、Chromium profile、桌面文件
 ```
 
 `compose.yaml` 里**不需要** `build:`（这跟仓库里那份不同）：镜像由源码目录
@@ -132,14 +131,14 @@ docker run -d --name webtop \
   -p 3000:3000 \
   -e PUID=1000 -e PGID=1000 \
   -e TZ=Asia/Shanghai \
-  -v "$PWD/config:/config" \
+  -v "$PWD/abc:/abc" \
   --shm-size=512m \
   alpine:openbox-novnc
 ```
 
 - `-p 3000:3000` 换成宿主上没被占用的端口即可（例如 `3002:3000`）。
 - 建议 `--shm-size=512m` 或更大：Chromium 在默认 64 MB `/dev/shm` 下更容易卡。
-- `/config` 里存 Wine 前缀与 Chromium profile；把 `.exe` 丢进
+- `/abc` 里存 Wine 前缀与 Chromium profile；把 `.exe` 丢进
   `config/Desktop` 就能在桌面里双击安装/运行。
 
 浏览器打开 `http://<主机IP>:3000` → 直接进入 noVNC 桌面。
@@ -154,7 +153,7 @@ docker run -d --name webtop \
 | `VNC_DEPTH` | `24` | 色深 |
 | `VNC_PORT` | `5901` | 内部 VNC 端口（**不对外暴露**） |
 | `NOVNC_PORT` | `3000` | Web 端口 |
-| `WINEPREFIX` | `/config/.wine` | Wine 前缀目录（在 /config 卷里，可持久化） |
+| `WINEPREFIX` | `/abc/.wine` | Wine 前缀目录（在 /abc 卷里，可持久化） |
 | `WINEDEBUG` | `-all` | Wine 日志级别；排查问题时设成空值可看全部日志 |
 | `WINEDLLOVERRIDES` | `mscoree,mshtml=` | 禁用 .NET/IE 组件：Alpine 没有 wine-mono/wine-gecko，禁用后程序快速报错而不是弹一个永远下载不完的对话框 |
 
@@ -262,7 +261,7 @@ wine ~/Desktop/setup.exe         # 安装包 / 程序
 wine winecfg                     # 配置（版本、盘符、音频…）
 ```
 
-- `WINEPREFIX` 默认落在 `~/.wine`，也就是 **`/config/.wine`**（在持久卷里，
+- `WINEPREFIX` 默认落在 `~/.wine`，也就是 **`/abc/.wine`**（在持久卷里，
   容器重建不丢）；第一次跑 wine 会自动建前缀（约十几秒）。
 - **支持 32 位 Windows 程序**：Alpine 的 wine 用新版 WoW64 布局
   （`/usr/lib/wine/i386-windows`），不需要 multilib。
@@ -290,96 +289,56 @@ v1 镜像里带 `docker-cli`，可以把宿主机的 `/var/run/docker.sock` 挂�
 需要这个能力时用 `BUILD_PACKAGES="docker-cli"` 重新构建（并自行挂 socket，风险自负）。
 宿主机上的操作请直接在宿主机终端执行。
 
-## Openbox 样式（复制 linuxserver/webtop:alpine-openbox）
+## Openbox 样式
 
-### 逐项 diff 的结果：只有 3 处差异
+Alpine 自带的 openbox 外观比较素，本镜像只改三处（都在
+`root/usr/local/bin/openbox-style` 里，构建时施加并逐项断言）：
 
-把运行中的 `linuxserver/webtop:alpine-openbox` 容器（下称参考容器）的
-`/config/.config/openbox/rc.xml`（790 行）与 Alpine 官方
-`/etc/xdg/openbox/rc.xml`（743 行）做**忽略空白与换行**的对比，
-真正的语义差异只有三处：
+| 项目 | Alpine 默认 | 本镜像 |
+|---|---|---|
+| 窗口/菜单主题 | `Clearlooks` | **`Artwiz-boxed`** |
+| 标题栏按钮布局 | `NLIMC`（带最小化） | **`NLMC`**（图标、标题、最大化、关闭） |
+| 快捷键 | — | 多一个 `C-S-d` → 切换窗口装饰 |
 
-| 项目 | Alpine 官方 | LinuxServer | 处理 |
-|---|---|---|---|
-| 窗口/菜单主题 | `Clearlooks` | **`Artwiz-boxed`** | 已复制 |
-| 标题栏按钮布局 | `NLIMC`（带最小化） | **`NLMC`**（只有最大化+关闭） | 已复制 |
-| 快捷键 | — | 多一个 `C-S-d` → `ToggleDecorations` | 已复制 |
+主题文件不用另外装：`Artwiz-boxed` 就是 Alpine 官方 `openbox` 包自带的
+`themerc`（`/usr/share/themes/Artwiz-boxed/openbox-3/themerc`，3.7 kB 纯文本，
+没有位图）。
 
-其余**完全一致**，所以没有别的可抄：
+**其余一概保持 Alpine 原样**——菜单延迟、`showIcons`、鼠标绑定（包括桌面右键
+弹根菜单）、focus/placement、`dragThreshold` 以及主题里的 6 处字体
+（标题 `sans 8 bold`、菜单 `sans 9 normal`）。这些正是"右键菜单能用"这个修复
+依赖的地方，刻意不动。
 
-- `<menu>` 段（hideDelay 200 / middle no / submenuShowDelay 100 /
-  submenuHideDelay 400 / showIcons yes / manageDesktops yes）；
-- 鼠标绑定（含 `Root` 右键 → root-menu）、`dragThreshold`、`doubleClickTime`；
-- focus / placement / resistance；
-- 主题里的 6 处字体（标题 `sans 8 bold`、菜单 `sans 9 normal`）。
+字体：镜像里装了 `font-noto`。因为 rc.xml 要的是 `sans`，只装 `font-dejavu`
+的话会解析到 DejaVu，标题栏就不是截图里的样子了。
 
-> 关键发现：**`Artwiz-boxed` 不需要从 LSIO 抄主题文件** —— 它就是 Alpine
-> 官方 `openbox` 包自带的那个 `themerc`
-> （`/usr/share/themes/Artwiz-boxed/openbox-3/themerc`，3.7 kB 纯文本，
-> 没有任何位图）。所以"抄样式"实际上只是改两个配置值 + 加一条快捷键。
-
-### 字体也要一起抄，否则只是"看起来差不多"
-
-两个镜像的 rc.xml 都写 `<name>sans</name>`，但：
-
-| | `fc-match sans` |
-|---|---|
-| LinuxServer 镜像 | **Noto Sans**（它装了 `font-noto`） |
-| 本镜像改之前 | DejaVu Sans（只有 `font-dejavu` + `font-noto-cjk`） |
-
-所以本镜像也加了 `font-noto`（+12.6 MB），标题栏/菜单字体才真的一致。
-
-### 实现方式
-
-`root/usr/local/bin/openbox-lsio-style` 是个幂等脚本（含断言）：
-构建时对 Alpine 官方 rc.xml 施加那三处修改，结果同时装到
-`/etc/xdg/openbox/rc.xml`（系统兜底）和 `/defaults/rc.xml`；
-运行时 `10-setup` 按与 `menu.xml` 相同的规则播种到
-`$HOME/.config/openbox/rc.xml`（用户没写过才装，用户改过就保留）。
-
-如果将来 Alpine 把默认主题改名，脚本会**直接报错让构建失败**，
-而不是悄悄产出一个半样式镜像。
+脚本是幂等的，并且对每个要改的值都有断言——将来 Alpine 改了默认主题名，
+构建会**直接失败**，而不是悄悄产出一个半样式镜像。
 
 ```bash
 # 构建日志里会打印结果
 theme: Clearlooks -> Artwiz-boxed
 titleLayout: NLIMC -> NLMC
 keybind: added C-S-d -> ToggleDecorations
-rc.xml: theme=Artwiz-boxed titleLayout=NLMC keybinds=25
 ```
 
 ### 菜单图标
 
-LSIO 的 `menu.xml` 给条目带 48x48 图标，本镜像同样补上
-（路径都确认存在于本镜像；Wine 官方没提供图标，那几项留空）：
+菜单条目都带 48×48 图标（路径都验证过存在于镜像内）：
 
 | 条目 | 图标 |
 |---|---|
 | Web Browser (Chromium) | `/usr/share/icons/hicolor/48x48/apps/chromium.png` |
-| Terminal (st) / (xterm) / Command Prompt | `/usr/share/pixmaps/xterm-color_48x48.xpm` |
+| Terminal (st) / (xterm) | `/usr/share/pixmaps/xterm-color_48x48.xpm` |
 | Text Editor | `/usr/share/icons/hicolor/48x48/apps/org.xfce.mousepad.png` |
 
-菜单配色也来自 Artwiz-boxed 的 `themerc`（深灰渐变、居中文字），实拍：
-
-![menu with icons](docs/screenshots/shot-style-menu-icons.png)
-
-### 效果对照（同一部署实例、同一个 Wine Notepad 窗口）
+### 效果对照
 
 | 改之前（Clearlooks，NLIMC） | 改之后（Artwiz-boxed，NLMC） |
 |---|---|
 | ![before](docs/screenshots/shot-style-before.png) | ![after](docs/screenshots/shot-style-after.png) |
 
-标题栏从米黄色 Clearlooks 变成 Artwiz-boxed 的深灰渐变、标题居中，
-按钮少了最小化（与 LSIO 的 `NLMC` 一致）。
-
-### 有意保留的差异
-
-- LSIO 的 `~/.config/openbox/autostart` 内容是 `exit 0`（他们靠 selkies 那套
-  自己画界面），本镜像的 autostart 仍要预热 Chromium profile 与 Wine 前缀。
-  （v2 时还保留着 tint2 面板，v3 已按需求删除，见「历史记录」一节。）
-- LSIO 菜单只有 3 项（Terminal / Chromium / OBConf），本镜像的菜单更全
-  （含 Wine 子菜单）。`OBConf` 没抄：Alpine 只有 Qt 版 `obconf-qt`，
-  为它拉进整套 Qt 不值得；想改主题直接编辑 `rc.xml` 即可。
+标题栏从米黄 Clearlooks 变成 Artwiz-boxed 的深灰渐变、标题居中，按钮少了最小化。
 
 ## Bug 修复：openbox 右键菜单 webbrowser 打不开 chromium
 
@@ -469,7 +428,7 @@ menu.xml:6: parser error : Double hyphen within comment: <!--
 
 ### 附带修好的：老卷升级不会丢新菜单
 
-`/config` 是持久卷，v1 用过的卷里存着老版 `menu.xml`/`autostart`。
+`/abc` 是持久卷，v1 用过的卷里存着老版 `menu.xml`/`autostart`。
 `10-setup` 原本"文件存在就不覆盖"，会让新加的 Wine 菜单永远不出现。
 现在改成：
 
@@ -524,7 +483,7 @@ WARN exited: tint2 (terminated by SIGSEGV (core dumped); not expected)
   而脚本后面有 `export DISPLAY="${DISPLAY-:1}"`，该默认值只在 DISPLAY
   **未设置**时生效 —— 一 unset 就被填回 `:1`，"无头"其实没生效。
   正确做法是显式赋空值。现在初始化日志会打印
-  `creating prefix /config/.wine (headless=yes DISPLAY='')`，一眼可验。
+  `creating prefix /abc/.wine (headless=yes DISPLAY='')`，一眼可验。
 - **"服务是 RUNNING"证明不了健康**：崩溃循环里约一半时间也能采样到 RUNNING。
   现在 `verify.sh` 会比对 12 秒前后 pid 是否一致，并检查启动阶段
   `grep -c "tint2.*SIGSEGV"` 为 0（v3 已随面板移除）。
@@ -542,7 +501,7 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
 
 实测结果（全新 volume）：
 
-默认镜像 **`alpine:openbox-novnc`**（1.47 GB，不含 wine）——**29/29 通过**，wine 相关的检查自动跳过（日志 `logs/verify-base-1836.log`）：
+默认镜像 **`alpine:openbox-novnc`**（1.47 GB，不含 wine）——**29/29 通过**，wine 相关的检查自动跳过（`logs/verify-base.log`）：
 
 ```
    [ OK ] container is running
@@ -555,11 +514,11 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
    [ OK ] docker cli is absent (removed in v2)
    [ OK ] no wine-specific integration in the image
    [ OK ] Openbox menu.xml parses (no libxml2 parser errors)
-   [ OK ] openbox theme is Artwiz-boxed (LinuxServer style)
-   [ OK ] openbox titleLayout is NLMC (as in the LinuxServer image)
+   [ OK ] openbox theme is Artwiz-boxed
+   [ OK ] openbox titleLayout is NLMC (no minimise button)
    [ OK ] Artwiz-boxed themerc is installed
    [ OK ] 'sans' resolves to Noto Sans (NotoSans-Regular.ttf)
-   [ OK ] C-S-d keybind present (LinuxServer's only extra binding)
+   [ OK ] C-S-d keybind present (toggles window decorations)
    [ OK ] no panel: tint2 is not installed
    [ OK ] no tint2 supervisor entry
    [ OK ] VNC server completed an RFB handshake
@@ -581,6 +540,9 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
 
  passed: 29   failed: 0
 ```
+
+同一份代码用 `BUILD_PACKAGES=wine` 构建出来（`alpine:openbox-novnc-wine`，2.07 GB）会多跑 7 项 wine 检查——**36/36 通过**（`logs/verify-wine.log`）。
+
 
 同一份代码用 `BUILD_PACKAGES=wine` 构建出来（`alpine:openbox-novnc-wine`，2.07 GB）会多跑 7 项
 wine 检查——**36/36 通过**（wine 11.0、64 位与 32 位 WoW64、前缀按需创建、字体注册、
@@ -606,7 +568,7 @@ notepad 窗口，日志 `logs/verify-wine-1836.log`）。
 | 版本（同一台机实测） | Alpine | 镜像 |
 |---|---|---|
 | v1 基线，`legacy/Dockerfile.v1-dockercli` | 3.22 | 1.39 GB |
-| v2：去 docker-cli、加 Wine + LinuxServer 样式 | 3.22 | 1.92 GB |
+| v2：去 docker-cli、加 Wine + 自定义样式 | 3.22 | 1.92 GB |
 | v3：去 tint2、Xvfb+x11vnc 换 Xvnc | 3.22 | 1.91 GB |
 | **当前：`FROM alpine:latest`** | **3.24.2** | **2.07 GB** |
 
@@ -686,22 +648,7 @@ APK_MIRROR=mirrors.aliyun.com ./scripts/build.sh
 
 镜像源写进镜像内，容器运行期 `apk add` 同样走国内源。
 
-### 2. 不再需要 ghcr.io（这是旧版最大的坑）
-
-旧 selkies 版本要从 `ghcr.io` 拉基础镜像，而本网络下 `docker pull` 会**永久卡在
-`Pulling fs layer`、0 字节、且不报错**。实测：
-
-| 方式 | 结果 |
-|---|---|
-| `docker pull ghcr.io/...` | 无限挂起 |
-| `curl` 同一 blob | 200 OK，约 1.2 MB/s |
-| `skopeo copy` 同一镜像 | 成功，约 600 KB/s |
-
-现在 noVNC 版基础镜像是 Docker Hub 的 `alpine:latest`，dockerd 已配置的
-加速器可直接命中，`docker build` 直接可用。
-如需重建旧的 selkies 版本，仍可用 `scripts/fetch-baseimage.sh`（走 skopeo 绕过）。
-
-### 3. Docker Hub 加速
+### 2. Docker Hub 加速
 
 本机 dockerd 已配置 `docker.1ms.run` / `hub1.kaijuu.studio`（未改动宿主机配置）。
 
@@ -719,9 +666,8 @@ APK_MIRROR=mirrors.aliyun.com ./scripts/build.sh
 
 ## 说明
 
-- 本镜像是**独立重建**，不是官方 `linuxserver/webtop` 的镜像。
-- `legacy/alpine-openbox/` 与 `legacy/alpine-sway/`（selkies 版）保留作为备份，
-  不参与 `./scripts/build.sh` 的默认构建。
+- 本镜像是**独立重建**：基础镜像是官方 `alpine:latest`，不含任何第三方基础镜像，
+  也不含历史版本（早期的 v1 与两个变体已删除，需要时从 git 历史取）。
 - VNC 端口 `5901` **未对外发布**，而且 Xvnc 以 `-localhost` 起，只监听回环，
   只有容器内的 websockify 能连。如需用原生 VNC 客户端直连，要同时去掉
   `-localhost`（`etc/supervisor.d/xvnc.ini`）并 `-p 5901:5901`，
@@ -736,5 +682,5 @@ APK_MIRROR=mirrors.aliyun.com ./scripts/build.sh
 镜像里安装的所有组件都来自 Alpine 官方仓库，各自遵循自己的许可
 （Chromium/BSD、openbox/GPL-2.0、Xvnc/TigerVNC GPL-2.0、Wine LGPL-2.1、
 websockify/noVNC、tint2 已移除……），使用与再分发时请一并遵守。
-`openbox-lsio-style` 只是把 openbox 自带主题与配置项的取值改成
-`linuxserver/webtop:alpine-openbox` 的那一套（三个配置值），不含对方的代码。
+`openbox-style` 只是把 openbox 自带主题与三个配置项的取值改成我们想要的样子，
+不含任何第三方代码。

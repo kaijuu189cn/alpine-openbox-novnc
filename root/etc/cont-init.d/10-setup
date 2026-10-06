@@ -4,11 +4,11 @@
 #
 # Runs from the entrypoint (see /usr/bin/start-desktop); seeds the unprivileged
 # user's home with the desktop defaults. Everything is idempotent so a
-# persistent /config volume is only populated once.
+# persistent /abc volume is only populated once.
 #
 set -e
 
-HOME_DIR="${HOME:-/config}"
+HOME_DIR="${HOME:-/abc}"
 : "${DISPLAY:=:1}"
 
 echo "[init] setting up ${HOME_DIR}"
@@ -52,16 +52,14 @@ seed_default() {  # seed_default <name under /defaults> <target path>
 seed_default menu.xml  "$HOME_DIR/.config/openbox/menu.xml"
 seed_default autostart "$HOME_DIR/.config/openbox/autostart"
 # The window-manager style (Artwiz-boxed theme, NLMC title layout, C-S-d
-# keybind) copied from linuxserver/webtop:alpine-openbox -- see
-# /usr/local/bin/openbox-lsio-style. Same rule as above: install it when the
-# user has none, keep whatever they wrote themselves.
+# keybind) -- see /usr/local/bin/openbox-style. Same rule as above: install it
+# when the user has none, keep whatever they wrote themselves.
 seed_default rc.xml    "$HOME_DIR/.config/openbox/rc.xml"
 
 # The system-wide menu and rc.xml are what Openbox falls back to when the user
 # has neither. Replace them too, so a session always gets our entries (the
-# working Chromium launcher, the Wine menu) and the LinuxServer look, rather
-# than Alpine's stock menu, which references programs that are not installed
-# (gnome-calculator, ...).
+# working Chromium launcher) and our openbox look, rather than Alpine's stock
+# menu, which references programs that are not installed (gnome-calculator, ...).
 if [ -f /defaults/menu.xml ]; then
   cp /defaults/menu.xml /etc/xdg/openbox/menu.xml
 fi

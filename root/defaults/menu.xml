@@ -14,10 +14,9 @@
   it stops on the first-run Terms of Service dialog. The wrapper pins X11 and
   skips first-run, so the browser actually opens. See that script for details.
 
-  Item icons follow linuxserver/webtop:alpine-openbox, whose menu.xml puts the
-  48x48 hicolor/pixmaps icons on its entries (its <menu> settings, including
-  showIcons, are identical to Alpine's stock rc.xml). Every path below is
-  verified to exist in this image.
+  Every entry carries a 48x48 icon from hicolor/pixmaps. The paths below are
+  all verified to exist in this image (Alpine's stock <menu> settings already
+  enable showIcons).
 
 -->
 <openbox_menu xmlns="http://openbox.org/3.4/menu">

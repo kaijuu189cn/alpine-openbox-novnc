@@ -2,7 +2,7 @@
 #
 #   docker compose up -d --build     # build the image, then start it on :3000
 #   docker compose logs -f           # entrypoint banner + supervisor output
-#   docker compose down              # stop it (./config keeps all the state)
+#   docker compose down              # stop it (./abc keeps all the state)
 #
 # The compose file builds the image itself, so ./scripts/build.sh is optional:
 # that script additionally passes a real BUILD_DATE and tags the extra
@@ -11,7 +11,7 @@
 # Everything below can be overridden from the environment or a .env file:
 #
 #   WEB_PORT=3003 docker compose up -d --build     # host port for the noVNC UI
-#   CONFIG_DIR=/srv/webtop docker compose up -d    # where /config lives
+#   CONFIG_DIR=/srv/webtop docker compose up -d    # where /abc lives
 #   APK_MIRROR=mirrors.aliyun.com docker compose up -d --build
 #
 # NOTE ON THE DEFAULT PORT: the UI defaults to 3000, which is the port this
@@ -34,7 +34,7 @@ services:
         #   BUILD_PACKAGES=wine IMAGE=alpine:openbox-novnc-wine docker compose up -d --build
         BUILD_PACKAGES: ${BUILD_PACKAGES:-}
     image: ${IMAGE:-alpine:openbox-novnc}
-    container_name: webtop
+    container_name: openbox
 
     environment:
       - PUID=1000
@@ -49,7 +49,7 @@ services:
     volumes:
       # Wine prefix, Chromium profile and the desktop config live here. Point
       # it somewhere else with CONFIG_DIR=/path docker compose up -d.
-      - "${CONFIG_DIR:-./config}:/config"
+      - "${CONFIG_DIR:-./abc}:/abc"
 
     ports:
       # host:container -- the noVNC web UI (container side is always 3000).

@@ -13,11 +13,11 @@
    [ OK ] docker cli is absent (removed in v2)
    [ OK ] no wine-specific integration in the image
    [ OK ] Openbox menu.xml parses (no libxml2 parser errors)
-   [ OK ] openbox theme is Artwiz-boxed (LinuxServer style)
-   [ OK ] openbox titleLayout is NLMC (as in the LinuxServer image)
+   [ OK ] openbox theme is Artwiz-boxed
+   [ OK ] openbox titleLayout is NLMC (no minimise button)
    [ OK ] Artwiz-boxed themerc is installed
    [ OK ] 'sans' resolves to Noto Sans (NotoSans-Regular.ttf)
-   [ OK ] C-S-d keybind present (LinuxServer's only extra binding)
+   [ OK ] C-S-d keybind present (toggles window decorations)
    [ OK ] no panel: tint2 is not installed
    [ OK ] no tint2 supervisor entry
    [ OK ] VNC server completed an RFB handshake
@@ -45,7 +45,7 @@
           window=_NET_WM_NAME(UTF8_STRING) = "about:blank - Chromium" WM_CLASS(STRING) = "chromium-browser", "Chromium-browser"
           window=_NET_WM_NAME(UTF8_STRING) = "Untitled - Notepad" WM_CLASS(STRING) = "notepad.exe", "notepad.exe"
    [ OK ] wine runs (wine-11.0)
-   [ OK ] wine built its prefix on demand under /config
+   [ OK ] wine built its prefix on demand under /abc
    [ OK ] 64-bit loader runs a Windows program (wine cmd /c ver)
    [ OK ] 32-bit WoW64 runs an i386 PE (syswow64\cmd.exe)
    [ OK ] Wine sees the image's Noto fonts (65 entries via fontconfig)

@@ -15,7 +15,7 @@
 #      (There is no wine-specific wrapper in this image any more; extra packages
 #      come from BUILD_PACKAGES and are used directly.)
 #
-# IMPORTANT: every wine command here runs as user abc, with HOME=/config. That
+# IMPORTANT: every wine command here runs as user abc, with HOME=/abc. That
 # is how the desktop runs it. Running wine as root hits a DIFFERENT wineserver
 # (/tmp/.wine-0 vs /tmp/.wine-1000) against a prefix owned by abc, and the
 # commands then produce no output at all -- which looks exactly like "Wine is
@@ -25,18 +25,18 @@
 # it, tearing down the exec session kills the process group before the window is
 # mapped, producing a false failure.
 #
-# Writes key=value findings to /config/wine-regression.txt.
+# Writes key=value findings to /abc/wine-regression.txt.
 #
 set -u
 
-OUT=/config/wine-regression.txt
+OUT=/abc/wine-regression.txt
 : > "$OUT"
 
 # Run a command as the desktop user, with the environment the desktop uses.
 as_abc() {
   su -s /bin/bash abc -c "
-    export DISPLAY=:1 HOME=/config XDG_RUNTIME_DIR=/config/.XDG
-    export WINEPREFIX=/config/.wine WINEDEBUG=-all
+    export DISPLAY=:1 HOME=/abc XDG_RUNTIME_DIR=/abc/.XDG
+    export WINEPREFIX=/abc/.wine WINEDEBUG=-all
     export WINEDLLOVERRIDES='mscoree,mshtml='
     $1" 2>/dev/null
 }
@@ -47,7 +47,7 @@ as_abc() {
   echo "cmd64=$(as_abc 'wine cmd /c ver' | tr -d '\r' | grep -i 'Microsoft Windows' | head -1)"
 
   # --- 3. 32-bit i386 PE through Wine's new WoW64 layer -------------------
-  if [ -f /config/.wine/drive_c/windows/syswow64/cmd.exe ]; then
+  if [ -f /abc/.wine/drive_c/windows/syswow64/cmd.exe ]; then
     echo "cmd32=$(as_abc 'wine "C:\windows\syswow64\cmd.exe" /c ver' | tr -d '\r' | grep -i 'Microsoft Windows' | head -1)"
   else
     echo "cmd32=no-syswow64"
@@ -57,7 +57,7 @@ as_abc() {
   echo "cjk_fonts=$(as_abc 'wine reg query "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Fonts"' | grep -ci noto)"
 
   # --- 1 (checked last): the prefix exists because of those calls ---
-  if [ -d /config/.wine/drive_c/windows ]; then
+  if [ -d /abc/.wine/drive_c/windows ]; then
     echo "wine_prefix=ready"
   else
     echo "wine_prefix=missing"
@@ -66,7 +66,7 @@ as_abc() {
 
 # --- 5. window test: the command the menu item runs ------------------------
 setsid su -s /bin/bash abc -c \
-  "DISPLAY=:1 HOME=/config XDG_RUNTIME_DIR=/config/.XDG WINEPREFIX=/config/.wine wine notepad" \
+  "DISPLAY=:1 HOME=/abc XDG_RUNTIME_DIR=/abc/.XDG WINEPREFIX=/abc/.wine wine notepad" \
   >/tmp/wine-notepad.log 2>&1 </dev/null &
 
 sleep 25

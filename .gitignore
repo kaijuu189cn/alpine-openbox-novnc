@@ -1,7 +1,7 @@
 # Runtime data of the container: Wine prefix, Chromium profile, desktop config.
-# Created by the /config bind mount (./config in docker-compose.yml). It is
+# Created by the /abc bind mount (./abc in docker-compose.yml). It is
 # hundreds of MB and completely reproducible -- never commit it.
-/config/
+/abc/
 
 # Local compose overrides (see .env.example)
 /.env

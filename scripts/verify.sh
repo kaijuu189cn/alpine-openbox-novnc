@@ -24,8 +24,8 @@
 #     (tint2 is not installed)
 #   * the Openbox menu file parses (a double hyphen in its XML comment used to
 #     make libxml2 reject it, leaving the root menu empty)
-#   * the LinuxServer.io openbox look is in place: Artwiz-boxed theme, NLMC
-#     title layout, C-S-d keybind, and "sans" resolving to Noto Sans
+#   * our openbox look is in place: Artwiz-boxed theme, NLMC title layout,
+#     C-S-d keybind, and "sans" resolving to Noto Sans
 #
 # NOTE ON PORTS: the image serves noVNC on 3000. If you run this from inside
 # another container that only shares the Docker socket, the published port is
@@ -56,7 +56,7 @@ echo "=============================================="
 docker rm -f "$NAME" > /dev/null 2>&1 || true
 docker volume rm "${NAME}-vol" > /dev/null 2>&1 || true
 
-docker run -d --name "$NAME" -v "${NAME}-vol:/config" \
+docker run -d --name "$NAME" -v "${NAME}-vol:/abc" \
   -p "${PORT}:3000" "$IMAGE" > /dev/null 2>&1
 
 echo "   waiting 35s for the session to come up..."
@@ -135,18 +135,17 @@ else
   bad "Openbox reported ${MENU_ERR} menu parser error(s); the root menu is empty"
 fi
 
-# --- 1e. LinuxServer.io openbox style --------------------------------
-# The look is copied from linuxserver/webtop:alpine-openbox: theme
-# Artwiz-boxed, title layout NLMC, and the font family the rc.xml asks for
+# --- 1e. openbox style ---------------------------------------------------
+# Our look: theme Artwiz-boxed, title layout NLMC, and the font family rc.xml asks for
 # ("sans") must actually resolve to Noto Sans as it does there -- without
 # font-noto it silently falls back to DejaVu and the titles look different.
-if docker exec "$NAME" sh -c 'grep -q "<name>Artwiz-boxed</name>" /config/.config/openbox/rc.xml' > /dev/null 2>&1; then
-  ok "openbox theme is Artwiz-boxed (LinuxServer style)"
+if docker exec "$NAME" sh -c 'grep -q "<name>Artwiz-boxed</name>" /abc/.config/openbox/rc.xml' > /dev/null 2>&1; then
+  ok "openbox theme is Artwiz-boxed"
 else
   bad "openbox theme is not Artwiz-boxed in the user rc.xml"
 fi
-if docker exec "$NAME" sh -c 'grep -q "<titleLayout>NLMC</titleLayout>" /config/.config/openbox/rc.xml' > /dev/null 2>&1; then
-  ok "openbox titleLayout is NLMC (as in the LinuxServer image)"
+if docker exec "$NAME" sh -c 'grep -q "<titleLayout>NLMC</titleLayout>" /abc/.config/openbox/rc.xml' > /dev/null 2>&1; then
+  ok "openbox titleLayout is NLMC (no minimise button)"
 else
   bad "openbox titleLayout is not NLMC"
 fi
@@ -161,8 +160,8 @@ if echo "$SANS" | grep -q "NotoSans"; then
 else
   bad "'sans' resolves to '${SANS:-nothing}', not Noto Sans"
 fi
-if docker exec "$NAME" sh -c 'grep -q "key=\"C-S-d\"" /config/.config/openbox/rc.xml' > /dev/null 2>&1; then
-  ok "C-S-d keybind present (LinuxServer's only extra binding)"
+if docker exec "$NAME" sh -c 'grep -q "key=\"C-S-d\"" /abc/.config/openbox/rc.xml' > /dev/null 2>&1; then
+  ok "C-S-d keybind present (toggles window decorations)"
 else
   bad "C-S-d keybind missing from rc.xml"
 fi
@@ -260,12 +259,12 @@ fi
 # failure that looks exactly like the original bug.
 docker cp "$HERE/chromium-regression.sh" "$NAME:/tmp/chromium-regression.sh" > /dev/null 2>&1
 docker exec "$NAME" chmod 755 /tmp/chromium-regression.sh > /dev/null 2>&1
-docker exec "$NAME" rm -f /config/chromium-regression.txt > /dev/null 2>&1
+docker exec "$NAME" rm -f /abc/chromium-regression.txt > /dev/null 2>&1
 docker exec -d "$NAME" /tmp/chromium-regression.sh
 
 echo "   waiting 40s for Chromium to map a window..."
 sleep 40
-CHROME_OUT="$(docker exec "$NAME" cat /config/chromium-regression.txt 2>/dev/null)"
+CHROME_OUT="$(docker exec "$NAME" cat /abc/chromium-regression.txt 2>/dev/null)"
 
 if echo "$CHROME_OUT" | grep -qi "chromium"; then
   ok "Chromium opens a real window via the menu launcher"
@@ -313,14 +312,14 @@ if [ "$HAS_WINE" = "1" ]; then
   # teardown and the prefix may already have been primed by the Openbox autostart.
   docker cp "$HERE/wine-regression.sh" "$NAME:/tmp/wine-regression.sh" > /dev/null 2>&1
   docker exec "$NAME" chmod 755 /tmp/wine-regression.sh > /dev/null 2>&1
-  docker exec "$NAME" rm -f /config/wine-regression.txt > /dev/null 2>&1
+  docker exec "$NAME" rm -f /abc/wine-regression.txt > /dev/null 2>&1
   docker exec -d "$NAME" /tmp/wine-regression.sh
 
   echo "   waiting up to 240s for the Wine prefix, loaders and notepad window..."
   WINE_OUT=""
   for _ in $(seq 1 24); do
     sleep 10
-    WINE_OUT="$(docker exec "$NAME" cat /config/wine-regression.txt 2>/dev/null)"
+    WINE_OUT="$(docker exec "$NAME" cat /abc/wine-regression.txt 2>/dev/null)"
     echo "$WINE_OUT" | grep -q '^window=' && break
   done
 
@@ -335,9 +334,9 @@ if [ "$HAS_WINE" = "1" ]; then
   fi
 
   if echo "$WINE_OUT" | grep -q 'wine_prefix=ready'; then
-    ok "wine built its prefix on demand under /config"
+    ok "wine built its prefix on demand under /abc"
   else
-    bad "wine did not create a prefix under /config"
+    bad "wine did not create a prefix under /abc"
   fi
 
   if echo "$WINE_OUT" | grep -qi 'cmd64=.*Microsoft Windows'; then

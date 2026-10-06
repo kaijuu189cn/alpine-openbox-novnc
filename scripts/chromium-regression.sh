@@ -9,19 +9,19 @@
 # kill Chromium's process group before it maps its window -- that teardown is
 # what makes this test falsely fail.
 #
-# Writes its findings to /config/chromium-regression.txt.
+# Writes its findings to /abc/chromium-regression.txt.
 #
 set -u
 
 export DISPLAY="${DISPLAY:-:1}"
-OUT=/config/chromium-regression.txt
+OUT=/abc/chromium-regression.txt
 
 pkill -f "lib/chromium/chromium" 2>/dev/null || true
 sleep 2
 
 # setsid detaches Chromium into its own session so it survives this script.
 setsid su -s /bin/bash abc -c \
-  "DISPLAY=${DISPLAY} HOME=/config XDG_RUNTIME_DIR=/config/.XDG /usr/bin/chromium-webtop about:blank" \
+  "DISPLAY=${DISPLAY} HOME=/abc XDG_RUNTIME_DIR=/abc/.XDG /usr/bin/chromium-webtop about:blank" \
   > /tmp/chromium-regression.log 2>&1 < /dev/null &
 
 # Chromium needs a while on first run: it creates a profile before mapping.

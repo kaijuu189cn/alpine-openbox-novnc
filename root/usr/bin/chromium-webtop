@@ -39,7 +39,7 @@
 set -e
 
 CHROME_BIN="/usr/lib/chromium/chromium"
-HOME_DIR="${HOME:-/config}"
+HOME_DIR="${HOME:-/abc}"
 CRASH_DIR="$HOME_DIR/.config/chromium/Crash Reports"
 mkdir -p "$CRASH_DIR" 2>/dev/null || true
 
