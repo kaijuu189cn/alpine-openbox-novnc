@@ -8,7 +8,7 @@
 #
 # IMAGE VARIANTS
 # --------------
-#   v1 (archive/Dockerfile.v1-dockercli): shipped docker-cli so the desktop
+#   v1 (legacy/Dockerfile.v1-dockercli): shipped docker-cli so the desktop
 #       could drive the host's Docker socket.
 #   v2: docker-cli REMOVED, wine ADDED. The image no longer mounts
 #       /var/run/docker.sock (see docker-compose.yml) and instead runs Windows
@@ -125,7 +125,7 @@
 #   apk repositories are rewritten to a domestic mirror before the first
 #   package operation.
 #
-FROM alpine:3.22
+FROM alpine:latest
 
 ARG BUILD_DATE
 ARG VERSION
@@ -138,9 +138,11 @@ LABEL org.opencontainers.image.title="webtop-alpine-openbox-novnc"
 # ---------------------------------------------------------------------------
 # China mirror + upgrade to the current Alpine release.
 #
-# `apk upgrade` is what pulls the image off the pinned alpine:3.22 base onto
-# the newest 3.x available from the mirror, so we are not stuck on a stale
-# Alpine the way the old linuxserver image was.
+# The base is `alpine:latest` -- the newest stable release -- so a rebuild
+# tracks Alpine instead of pinning a branch (the old linuxserver image was
+# stuck on 3.21 for 14 months). The sed below only swaps the CDN host for a
+# domestic mirror; the v3.xx path comes from whatever the base image ships, so
+# both stay in step. `apk upgrade` then picks up the latest point release.
 # ---------------------------------------------------------------------------
 RUN \
   echo "**** configure alpine mirror: ${APK_MIRROR} ****" && \
@@ -241,7 +243,7 @@ RUN \
   rm -f /usr/share/fonts/noto/NotoSerifCJK-*.ttc && \
   echo "**** prune numpy/openblas (websockify treats numpy as optional) ****" && \
   rm -rf \
-    /usr/lib/python3.12/site-packages/numpy* \
+    /usr/lib/python3.*/site-packages/numpy* \
     /usr/lib/libopenblas*.so && \
   echo "**** prune perl (only tigervnc's vncserver helper wants it; Xvnc is C++) ****" && \
   rm -rf \

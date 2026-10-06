@@ -16,8 +16,8 @@
 >    初始化前把 `resize=remote` 写进浏览器存储，避免"浏览器里存过旧设置导致
 >    自动适配永远不触发"（见下文说明；URL 显式参数仍然优先）。
 >
-> 早前版本：v2 去掉 `docker-cli`、加入 **Wine 10.7**；v1（带 docker cli）
-> 的 Dockerfile 存于 `novnc/alpine-openbox/archive/Dockerfile.v1-dockercli`。
+> 早前版本：v2 去掉 `docker-cli`、加入 Wine（当时 10.7，现在随 Alpine 是 11.0）；v1（带 docker cli）
+> 的 Dockerfile 存于 `legacy/Dockerfile.v1-dockercli`。
 
 ## 架构（已从 selkies 换成 noVNC）
 
@@ -34,52 +34,52 @@ Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC
 | 项目 | 旧 `linuxserver/webtop:alpine-openbox` | 本镜像 |
 |---|---|---|
 | 构建时间 | 2025-06-24（14 个月前） | 本次构建 |
-| Alpine | **3.21.3** | **3.22.6**（`apk upgrade` 跟随 3.22 分支） |
+| Alpine | **3.21.3** | **3.24.2**（`FROM alpine:latest`，跟着最新稳定版走） |
 | Chromium | 136.0.7103.113 | **跟随 Alpine 仓库** |
-| Windows 程序 | 无 | **Wine 10.7（含 32 位 WoW64）** |
-| 串流层 | selkies / pixelflux | **Xvnc (TigerVNC 1.15) + noVNC 1.6.0** |
+| Windows 程序 | 无 | **Wine 11.0（含 32 位 WoW64）** |
+| 串流层 | selkies / pixelflux | **Xvnc (TigerVNC 1.16.2) + noVNC 1.6.0** |
 | 分辨率 | 自适应（selkies） | **自适应（Xvnc SetDesktopSize）** |
 | 状态栏面板 | 无 | **无（v3 移除 tint2）** |
-| 基础镜像 | `baseimage-selkies:alpine321` | **`alpine:3.22` 官方** |
+| 基础镜像 | `baseimage-selkies:alpine321` | **`alpine:latest` 官方（3.24.2）** |
 | docker cli | 有 | **无（v2 移除）** |
-| 镜像体积 | 2.59 GB | **1.91 GB**（v1 无 Wine 是 1.39 GB） |
+| 镜像体积 | 2.59 GB | **2.07 GB**（含 Wine 410 MB、Chromium 308 MB） |
 | Web 端口 | 3001 | **3000** |
 
 ## 目录结构
 
 ```
 .
-├── novnc/alpine-openbox/        # 本镜像（推荐）
-│   ├── Dockerfile
-│   ├── archive/                 # 旧版 Dockerfile 留存
-│   │   └── Dockerfile.v1-dockercli
-│   └── root/
-│       ├── etc/supervisord.conf         # supervisor 主配置
-│       ├── etc/supervisor.d/            # xvnc / openbox / novnc
-│       ├── etc/cont-init.d/10-setup     # 首次运行初始化（含默认文件升级）
-│       ├── etc/xdg/mimeapps.list        # .exe 默认交给 Wine 打开
-│       ├── defaults/                    # menu.xml / rc.xml / autostart
-│       │   └── *.v1                     # 上一版默认文件，用于安全升级比对
-│       ├── usr/share/applications/      # wine-webtop.desktop
-│       ├── usr/bin/
-│       │   ├── start-desktop            # 入口脚本
-│       │   ├── chromium-webtop          # Chromium 启动包装（见下）
-│       │   ├── wine-webtop              # Wine 启动包装（见下）
-│       │   └── wine-prefix-init         # 首次构建 Wine 前缀
-│       └── usr/local/bin/
-│           └── openbox-lsio-style       # 施加 LinuxServer 的 openbox 样式
+├── Dockerfile                   # 镜像定义（FROM alpine:latest + 全套裁剪/补丁）
+├── root/                        # 镜像内文件系统覆盖层（COPY root /）
+│   ├── etc/supervisor.d/        #   xvnc / openbox / novnc
+│   ├── etc/cont-init.d/10-setup #   首次运行初始化（含默认文件升级）
+│   ├── etc/xdg/mimeapps.list    #   .exe 默认交给 Wine 打开
+│   ├── defaults/                #   menu.xml / rc.xml / autostart（*.v1 用于安全升级比对）
+│   ├── usr/bin/                 #   start-desktop / chromium-webtop / wine-webtop / wine-prefix-init
+│   ├── usr/local/bin/           #   openbox-lsio-style（LinuxServer 样式）
+│   └── usr/share/novnc/app/     #   webtop-adaptive.js（强制自适应分辨率）
+├── docker-compose.yml           # 构建 + 运行（默认 3000，可用 .env 覆盖）
+├── .env.example                 # WEB_PORT / CONFIG_DIR 等可调项模板
 ├── scripts/
-│   ├── build.sh                 # 一键构建
+│   ├── build.sh                 # 可选构建入口（额外传 BUILD_DATE + 别名标签）
 │   ├── verify.sh                # 一键验证（37 项检查）
-│   ├── chromium-regression.sh   # Chromium 菜单启动回归测试
-│   ├── wine-regression.sh       # Wine 回归测试（64/32 位、字体、窗口）
-│   ├── vncprobe.py              # VNC 像素探测（数颜色，verify.sh 用）
-│   ├── vncresize.py             # 请求服务器改分辨率（验证自适应，verify.sh 用）
-│   ├── vncshot.py               # VNC 截图（存 PNG，肉眼排查用）
-│   └── fetch-baseimage.sh       # 旧 selkies 镜像取基础镜像用
-├── logs/                        # 构建/验证日志与桌面实拍截图
-└── alpine-openbox/, alpine-sway/  # 旧的 selkies 版本（保留备份）
+│   ├── chromium-regression.sh   # Chromium 菜单启动回归
+│   ├── wine-regression.sh       # Wine 回归（64/32 位、字体、窗口）
+│   ├── vncprobe.py              # VNC 像素探测（数颜色）
+│   ├── vncresize.py             # 请求服务器改分辨率（验证自适应）
+│   ├── vncshot.py               # VNC 截图（存 PNG）
+│   └── fetch-baseimage.sh       # legacy 的 selkies 基础镜像取用
+├── docs/
+│   └── screenshots/             # README 引用的实拍截图
+├── logs/                        # 验证日志 + 排查记录与脚手架
+└── legacy/                      # 早期版本，不参与默认构建
+    ├── Dockerfile.v1-dockercli  #   v1：带 docker cli 的那版镜像
+    ├── alpine-openbox/          #   最早的 selkies 版（x11vnc 之前）
+    └── alpine-sway/             #   sway/Wayland 版
 ```
+
+> 构建上下文是**仓库根**：`.dockerignore` 只放行 `Dockerfile` 与 `root/`，
+> 所以 `config/`（Wine 前缀，几百 MB）、`logs/`、`legacy/` 都不会被送进 daemon。
 
 ## 构建与运行
 
@@ -91,7 +91,8 @@ docker compose logs -f           # 入口横幅 + supervisor 日志
 docker compose down              # 停掉（./config 里的状态都保留）
 ```
 
-compose 文件里带 `build:` 段（context = `novnc/alpine-openbox`），
+compose 文件里带 `build:` 段（context = 仓库根，靠 `.dockerignore` 只送
+`Dockerfile` 与 `root/`），
 所以**不必先跑 `scripts/build.sh`**——那条路只是额外传一个真实的
 `BUILD_DATE` 并多打一个 `webtop:alpine-openbox-<TAG>` 别名。
 `docker compose ps` 会显示 `(healthy)`：镜像里用 busybox `wget` 探 3000 端口。
@@ -216,14 +217,14 @@ http://<主机IP>:3000/vnc.html?resize=off
 
 | 1280×800（初始值） | 请求 1600×900 之后 |
 |---|---|
-| ![1280x800](logs/shot-v3-1280x800.png) | ![1600x900](logs/shot-v3-1600x900.png) |
+| ![1280x800](docs/screenshots/shot-v3-1280x800.png) | ![1600x900](docs/screenshots/shot-v3-1600x900.png) |
 
 注意：改的是**桌面尺寸**，已有窗口不会被拉伸（openbox 的常规行为）——
 最大化后就会铺满新尺寸。
 
 ### 在桌面里运行 Windows 程序（Wine）
 
-镜像内置 **Wine 10.7**（Alpine community 仓库），**支持 32 位 Windows 程序**：
+镜像内置 **Wine 11.0**（Alpine community 仓库），**支持 32 位 Windows 程序**：
 wine 用的是新版 WoW64 布局（`/usr/lib/wine/i386-windows`），所以 Alpine 不需要
 multilib 就能跑 i386 的 PE。
 
@@ -272,7 +273,7 @@ v1 镜像里带 `docker-cli`，可以把宿主机的 `/var/run/docker.sock` 挂�
 - `abc` 用户不再加入 `docker` 组；
 - 相应地少了一份「容器内进程等同宿主机 root」的风险面。
 
-需要这个能力时用 `archive/Dockerfile.v1-dockercli` 或自行 `apk add docker-cli`。
+需要这个能力时用 `legacy/Dockerfile.v1-dockercli` 或自行 `apk add docker-cli`。
 宿主机上的操作请直接在宿主机终端执行。
 
 ## Openbox 样式（复制 linuxserver/webtop:alpine-openbox）
@@ -346,13 +347,13 @@ LSIO 的 `menu.xml` 给条目带 48x48 图标，本镜像同样补上
 
 菜单配色也来自 Artwiz-boxed 的 `themerc`（深灰渐变、居中文字），实拍：
 
-![menu with icons](logs/shot-style-menu-icons.png)
+![menu with icons](docs/screenshots/shot-style-menu-icons.png)
 
 ### 效果对照（同一部署实例、同一个 Wine Notepad 窗口）
 
 | 改之前（Clearlooks，NLIMC） | 改之后（Artwiz-boxed，NLMC） |
 |---|---|
-| ![before](logs/shot-style-before.png) | ![after](logs/shot-style-after.png) |
+| ![before](docs/screenshots/shot-style-before.png) | ![after](docs/screenshots/shot-style-after.png) |
 
 标题栏从米黄色 Clearlooks 变成 Artwiz-boxed 的深灰渐变、标题居中，
 按钮少了最小化（与 LSIO 的 `NLMC` 一致）。
@@ -410,7 +411,7 @@ Chromium 通常会回退到软件渲染，但反复的 GPU 进程崩溃让启动
 
 → 显式禁用 GPU / Vulkan / SkiaRenderer，直接走软件渲染。
 
-修复集中在 **`novnc/alpine-openbox/root/usr/bin/chromium-webtop`**，
+修复集中在 **`root/usr/bin/chromium-webtop`**，
 菜单项调用的是这个包装脚本而不是裸 `chromium`。
 
 ### 排查过程中的一个坑（记录备查）
@@ -524,7 +525,7 @@ WARN exited: tint2 (terminated by SIGSEGV (core dumped); not expected)
 PROBE_HOST=<主机IP> ./scripts/verify.sh
 ```
 
-实测结果（全新 volume，**37/37 通过**，完整日志见 `logs/verify-novnc-v3-*.log`）：
+实测结果（Alpine 3.24.2 + Wine 11.0，全新 volume，**37/37 通过**，完整日志见 `logs/` 下最新一份 `verify-*.log`）：
 
 ```
    [ OK ] container is running
@@ -558,23 +559,23 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
           _NET_WM_NAME(UTF8_STRING) = "about:blank - Chromium"
    [ OK ] desktop resizes on request (SetDesktopSize honoured, after=(1500, 850))
    [ OK ] framebuffer reports the requested size after the resize
-   [ OK ] the open window repaints at the new size (610 unique colours)
-          wine_version=wine-10.7
+   [ OK ] the open window repaints at the new size (623 unique colours)
+          wine_version=wine-11.0
           wine_prefix=ready
-          cmd64=Microsoft Windows 10.0.19043
-          cmd32=Microsoft Windows 10.0.19043
+          cmd64=Microsoft Windows 10.0.19045
+          cmd32=Microsoft Windows 10.0.19045
           cjk_fonts=65
           notepad_procs=1
           window=_NET_WM_NAME(UTF8_STRING) = "about:blank - Chromium" WM_CLASS(STRING) = "chromium-browser", "Chromium-browser"
           window=_NET_WM_NAME(UTF8_STRING) = "Untitled - Notepad" WM_CLASS(STRING) = "notepad.exe", "notepad.exe"
-   [ OK ] wine runs (wine-10.7)
+   [ OK ] wine runs (wine-11.0)
    [ OK ] Wine prefix was built under /config
    [ OK ] 64-bit loader runs a Windows program (wine cmd /c ver)
    [ OK ] 32-bit WoW64 runs an i386 PE (syswow64\cmd.exe)
    [ OK ] Wine sees the image's Noto fonts (65 entries via fontconfig)
    [ OK ] wine-webtop notepad maps a real window
           window=_NET_WM_NAME(UTF8_STRING) = "Untitled - Notepad" WM_CLASS(STRING) = "notepad.exe", "notepad.exe"
-   [ OK ] desktop still paints after the Chromium and Wine tests (908 unique colours)
+   [ OK ] desktop still paints after the Chromium and Wine tests (1004 unique colours)
 
  passed: 37   failed: 0
 ```
@@ -586,44 +587,33 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
 
 | 截图 | 内容 |
 |---|---|
-| ![部署实例](logs/shot-deployed-notepad.png) | **部署实例 `webtop3`（端口 3002）实拍**：Wine 的 Notepad 在跑，顶部 tint2 面板显示任务按钮与时钟 |
-| ![Wine Notepad](logs/shot-v2-notepad-running.png) | 同一次验证里 Wine Notepad + Chromium 同时开着（面板任务栏两个按钮） |
-| ![右键菜单](logs/shot-v2-rootmenu-test.png) | 桌面右键菜单，含 **Wine (Windows apps)** 子菜单入口 |
-| ![Wine 子菜单](logs/shot-v2-wine-submenu.png) | Wine 子菜单展开：文件管理器 / Notepad / winecfg / regedit / 卸载 / 命令提示符 |
+| ![部署实例](docs/screenshots/shot-deployed-notepad.png) | **部署实例 `webtop3`（端口 3002）实拍**：Wine 的 Notepad 在跑，顶部 tint2 面板显示任务按钮与时钟 |
+| ![Wine Notepad](docs/screenshots/shot-v2-notepad-running.png) | 同一次验证里 Wine Notepad + Chromium 同时开着（面板任务栏两个按钮） |
+| ![右键菜单](docs/screenshots/shot-v2-rootmenu-test.png) | 桌面右键菜单，含 **Wine (Windows apps)** 子菜单入口 |
+| ![Wine 子菜单](docs/screenshots/shot-v2-wine-submenu.png) | Wine 子菜单展开：文件管理器 / Notepad / winecfg / regedit / 卸载 / 命令提示符 |
 
 截图由 `scripts/vncshot.py` 抓取（纯标准库 RFB 客户端，直接存 PNG）。
 
-## 精简优化（1.66 GB → 1.38 GB；v2 加 Wine 到 1.92 GB；v3 换 Xvnc 降到 1.91 GB）
+## 体积
 
-保留核心工具：**chromium + openbox + wine**（v1 曾是 docker cli + chromium + openbox），
-其余只留会话运行必需。
-
-### Wine 带来多少（v2 实测）
-
-同一台机器、同一镜像源、同一天连续构建的两个版本：
-
-| 镜像 | 体积（`docker image inspect` 的字节数） |
-|---|---|
-| 基线（v1，`archive/Dockerfile.v1-dockercli`） | **1 389 072 284 B ≈ 1.39 GB** |
-| v2（去 docker-cli、加 Wine、加 LSIO 样式） | 1 923 241 367 B ≈ 1.92 GB |
-| 本镜像（v3，去 tint2、Xvfb+x11vnc 换 Xvnc） | **1 911 126 378 B ≈ 1.91 GB** |
-
-整体 **+522 MB**；其中删掉 docker-cli 省了 31 MB（`/usr/bin/docker` 单个二进制
-32 264 568 B），所以 **Wine 本身约 +545 MB**；LinuxServer 样式那一步 +20 MB
-（`font-noto` 字体 12.6 MB + 样式化后的 rc.xml，见「Openbox 样式」一节）；
-v3 换 Xvnc 反而略降：`tigervnc` 装进来（依赖 perl 36 MB，装完即裁掉）、
-同时移除 `xvfb` + `x11vnc` + `tint2`（约 3 MB）。构成：
-
-| 内容 | 大小 | 说明 |
+| 版本（同一台机实测） | Alpine | 镜像 |
 |---|---|---|
-| `/usr/lib/wine/x86_64-windows` | 182 MB | 64 位 PE 内置程序 |
-| `/usr/lib/wine/i386-windows` | 185 MB | 32 位 PE 内置程序，**新版 WoW64 靠它跑 32 位 Windows 程序**，所以留着 |
-| `/usr/lib/wine/x86_64-unix` | 5.5 MB | Unix 侧驱动 `.so` |
-| gstreamer / libgphoto2 / sane / pcsc / libpcap | <10 MB | 只被 wine 的单个模块链接（`winegstreamer.so` 等），删了会丢媒体播放/扫描仪/智能卡支持，不划算 |
+| v1 基线，`legacy/Dockerfile.v1-dockercli` | 3.22 | 1.39 GB |
+| v2：去 docker-cli、加 Wine + LinuxServer 样式 | 3.22 | 1.92 GB |
+| v3：去 tint2、Xvfb+x11vnc 换 Xvnc | 3.22 | 1.91 GB |
+| **当前：`FROM alpine:latest`** | **3.24.2** | **2.07 GB** |
 
-> 注意：Wine 依赖 `mesa-gl`，而 `mesa-gl` 里的 `libLLVM.so.20`（170 MB）+
-> `libgallium`（39 MB）**本来就在**（Xvfb 需要 `libGL.so.1`），所以 Wine
-> 没有让这部分翻倍；`gallium-pipe` 的裁减对 Wine 同样生效。
+涨的 160 MB 全是上游包变大，不是裁剪失效（逐项对比 3.22 → 3.24）：
+
+```
+wine        372 MB -> 410 MB     chromium   263 MB -> 308 MB
+libLLVM     170 MB -> 182 MB     libgallium  39 MB ->  42 MB
+gallium-pipe 8.4 MB -> 已不存在（3.24 里 mesa 不再装那个目录）
+```
+
+当前镜像里仍然生效的裁剪：`numpy`/`openblas` 0 残留、`NotoSerifCJK` 0 残留、
+`perl` 已删（`tigervnc` 的唯一理由）、`numpy` 的路径已改成
+`/usr/lib/python3.*/site-packages/` 以适配 3.24 的 Python 3.14。
 
 ### 删掉了什么
 
@@ -700,7 +690,7 @@ APK_MIRROR=mirrors.aliyun.com ./scripts/build.sh
 | `curl` 同一 blob | 200 OK，约 1.2 MB/s |
 | `skopeo copy` 同一镜像 | 成功，约 600 KB/s |
 
-现在 noVNC 版基础镜像是 Docker Hub 的 `alpine:3.22`，dockerd 已配置的
+现在 noVNC 版基础镜像是 Docker Hub 的 `alpine:latest`，dockerd 已配置的
 加速器可直接命中，`docker build` 直接可用。
 如需重建旧的 selkies 版本，仍可用 `scripts/fetch-baseimage.sh`（走 skopeo 绕过）。
 
@@ -723,7 +713,7 @@ APK_MIRROR=mirrors.aliyun.com ./scripts/build.sh
 ## 说明
 
 - 本镜像是**独立重建**，不是官方 `linuxserver/webtop` 的镜像。
-- `alpine-openbox/` 与 `alpine-sway/`（selkies 版）保留作为备份，
+- `legacy/alpine-openbox/` 与 `legacy/alpine-sway/`（selkies 版）保留作为备份，
   不参与 `./scripts/build.sh` 的默认构建。
 - VNC 端口 `5901` **未对外发布**，而且 Xvnc 以 `-localhost` 起，只监听回环，
   只有容器内的 websockify 能连。如需用原生 VNC 客户端直连，要同时去掉

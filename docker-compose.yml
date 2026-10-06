@@ -24,7 +24,7 @@ services:
     # will use. With both set, `docker compose up -d` (without --build) reuses
     # an existing image and only builds when it is missing.
     build:
-      context: ./novnc/alpine-openbox
+      context: .
       args:
         APK_MIRROR: ${APK_MIRROR:-mirror.nju.edu.cn}
         VERSION: ${TAG:-novnc}

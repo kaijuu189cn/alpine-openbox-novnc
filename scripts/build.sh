@@ -53,14 +53,14 @@ build_one() {
 
 case "$TARGET" in
   novnc|"")
-    build_one alpine-openbox-novnc novnc/alpine-openbox "alpine-openbox-${TAG}"
+    build_one alpine-openbox-novnc . "alpine-openbox-${TAG}"
     ;;
   legacy)
     # Older selkies-based builds. These need the ghcr.io base image, so fetch
     # it first with skopeo (plain `docker pull` stalls on that registry here).
     "$ROOT/scripts/fetch-baseimage.sh" alpine324 amd64
-    build_one alpine-openbox alpine-openbox "alpine-openbox-${TAG}"
-    build_one alpine-sway    alpine-sway    "alpine-sway-${TAG}"
+    build_one alpine-openbox legacy/alpine-openbox "alpine-openbox-${TAG}"
+    build_one alpine-sway    legacy/alpine-sway    "alpine-sway-${TAG}"
     ;;
   *)
     echo "ERROR: unknown target '$TARGET' (use novnc|legacy)" >&2
