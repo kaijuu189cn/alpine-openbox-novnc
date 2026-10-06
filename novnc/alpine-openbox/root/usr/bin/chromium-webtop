@@ -1,0 +1,64 @@
+#!/bin/bash
+#
+# Chromium launcher for webtop:alpine-openbox-novnc.
+#
+# WHY THIS WRAPPER EXISTS
+# (fixes: "openbox 右键菜单 webbrowser 打不开 chromium")
+# ---------------------------------------------------------------------------
+# Clicking "Web Browser" in the Openbox menu launched Chromium, but no browser
+# window ever appeared. Three separate causes were found and are fixed here:
+#
+#  1. WAYLAND PROBE
+#     Alpine ships /etc/chromium/chromium.conf with
+#       CHROMIUM_FLAGS="--ozone-platform-hint=auto"
+#     With that hint Chromium probes for a Wayland session. There is no Wayland
+#     compositor in this image (we render into Xvfb), so the probe leaves
+#     Chromium holding an unmapped 10x10 stub window: `pgrep chromium` shows
+#     processes, but nothing is ever drawn.
+#     -> pin --ozone-platform=x11.
+#
+#  2. FIRST-RUN TERMS OF SERVICE
+#     On a fresh profile Chromium blocks on the "Additional Terms of Service"
+#     dialog. Served through a browser this reads as "the browser didn't open".
+#     -> pass --no-first-run --no-default-browser-check.
+#
+#  3. GPU / VULKAN INITIALISATION FAILURE
+#     Chromium bundles libvulkan.so.1 but the container has no Vulkan ICD and
+#     no GPU, so ANGLE/EGL initialisation fails:
+#       eglInitialize SwANGLE failed with error EGL_NOT_INITIALIZED
+#       Initialization of all EGL display types failed
+#       Exiting GPU process due to errors during initialization
+#     Chromium normally recovers by falling back to software rendering, but the
+#     repeated GPU-process churn makes startup flaky and floods the log.
+#     -> disable the GPU path, Vulkan, and SkiaRenderer explicitly so it goes
+#        straight to software rendering.
+#
+# The sandbox is disabled because containers normally lack the user-namespace
+# support Chromium's sandbox needs; --test-type suppresses the resulting banner.
+#
+set -e
+
+CHROME_BIN="/usr/lib/chromium/chromium"
+HOME_DIR="${HOME:-/config}"
+CRASH_DIR="$HOME_DIR/.config/chromium/Crash Reports"
+mkdir -p "$CRASH_DIR" 2>/dev/null || true
+
+# Clear a stale singleton lock left behind by a killed session, otherwise a new
+# launch just hands the URL to a dead instance and exits.
+if ! pgrep -f "$CHROME_BIN" > /dev/null 2>&1; then
+  rm -f "$HOME_DIR/.config/chromium/Singleton"* 2>/dev/null || true
+fi
+
+exec "$CHROME_BIN" \
+  --ozone-platform=x11 \
+  --disable-features=UseOzonePlatform,Vulkan,UseSkiaRenderer \
+  --no-first-run \
+  --no-default-browser-check \
+  --no-sandbox \
+  --disable-gpu \
+  --disable-gpu-compositing \
+  --disable-vulkan \
+  --disable-dev-shm-usage \
+  --password-store=basic \
+  --test-type \
+  "$@"

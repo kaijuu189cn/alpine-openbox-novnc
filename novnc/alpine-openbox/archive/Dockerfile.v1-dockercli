@@ -1,0 +1,191 @@
+# syntax=docker/dockerfile:1
+#
+# webtop:alpine-openbox-novnc
+#
+# A from-scratch Alpine + Openbox desktop served over VNC/noVNC, deliberately
+# kept minimal: docker cli + chromium + openbox, plus only what the session
+# needs to run.
+#
+# WHY THIS EXISTS
+# ---------------
+# The previous build reused LinuxServer's baseimage-selkies. That base image is
+# built around selkies/pixelflux, which made the stack hard to reason about and
+# tied us to a moving, sometimes-broken upstream. This image drops that
+# dependency entirely:
+#
+#   Xvfb (X11)  ->  x11vnc (VNC)  ->  websockify + noVNC (browser)
+#                     |
+#                  openbox
+#
+# Everything comes from the official Alpine repositories, so a rebuild only
+# ever tracks Alpine itself.
+#
+# SIZE OPTIMISATION (see the combined install+prune step below)
+# -------------------------------------------------------------
+# apk resolves dependencies whether or not they are used at runtime, so the
+# dependency trees drag in weight this image never executes:
+#
+#   * gallium-pipe (~90 MB): one .so per GPU (iris, crocus, radeonsi, nouveau,
+#     i915, r300, r600, vmwgfx). A container has no GPU; only pipe_swrast.so
+#     (the software rasteriser) is kept.  -> REMOVED
+#
+#   * websockify -> py3-numpy -> openblas (~73 MB). websockify imports numpy
+#     inside a try/except ImportError and merely warns "HyBi protocol will be
+#     slower" without it.                                              -> REMOVED
+#
+#   * libLLVM.so.20 (170 MB) + libgallium (40 MB): these look like the same
+#     kind of dead GPU weight, but they are LOAD-BEARING. Xvfb links
+#     libGL.so.1 -> libgallium -> libLLVM. Removing them makes Xvfb refuse to
+#     start ("Error loading shared library libgallium-...: needed by
+#     libGL.so.1"), which kills the whole session.                    -> KEPT
+#
+# Pruning must happen INSIDE the same RUN as the install, otherwise Docker
+# keeps the original files in the earlier layer and the image does not shrink.
+#
+# China-network optimisation:
+#   apk repositories are rewritten to a domestic mirror before the first
+#   package operation.
+#
+FROM alpine:3.22
+
+ARG BUILD_DATE
+ARG VERSION
+ARG APK_MIRROR=mirror.nju.edu.cn
+
+LABEL build_version="webtop-novnc version:- ${VERSION} Build-date:- ${BUILD_DATE}"
+LABEL maintainer="alpineopenbox-rebuild"
+LABEL org.opencontainers.image.title="webtop-alpine-openbox-novnc"
+
+# ---------------------------------------------------------------------------
+# China mirror + upgrade to the current Alpine release.
+#
+# `apk upgrade` is what pulls the image off the pinned alpine:3.22 base onto
+# the newest 3.x available from the mirror, so we are not stuck on a stale
+# Alpine the way the old linuxserver image was.
+# ---------------------------------------------------------------------------
+RUN \
+  echo "**** configure alpine mirror: ${APK_MIRROR} ****" && \
+  sed -i \
+    "s|dl-cdn.alpinelinux.org|${APK_MIRROR}|g" \
+    /etc/apk/repositories && \
+  cat /etc/apk/repositories && \
+  echo "**** upgrade base ****" && \
+  apk upgrade --no-cache
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    DISPLAY=:1 \
+    HOME=/config \
+    TITLE="Alpine Openbox" \
+    VNC_PORT=5901 \
+    NOVNC_PORT=3000 \
+    VNC_RESOLUTION=1280x800 \
+    VNC_DEPTH=24
+
+# ---------------------------------------------------------------------------
+# Packages + prune, in ONE RUN.
+#
+# The prune MUST live in the same layer as the install. Deleting files in a
+# later RUN does not shrink the image: Docker keeps the earlier layer intact and
+# the deletion only records a whiteout on top. Doing it here is what actually
+# reclaims the space.
+#
+# Packages, grouped by why they are here:
+#   core      : docker-cli, chromium, openbox
+#   session   : xvfb, x11vnc, novnc, websockify, supervisor, dbus(+x11)
+#   tools     : st, mousepad, xterm, tint2, xdg-utils, setxkbmap
+#   fonts/i18n: font-noto-cjk (Chinese), font-dejavu, adwaita-icon-theme
+#
+# PRUNE NOTES
+# -----------
+# Removed:
+#   * gallium-pipe hardware drivers. This directory holds one .so per GPU
+#     (iris, crocus, radeonsi, nouveau, i915, r300, r600, vmwgfx) totalling
+#     ~90 MB. A container has no GPU, so only pipe_swrast.so (the software
+#     rasteriser Xvfb falls back to) is kept.
+#   * numpy + openblas (~73 MB). websockify imports numpy inside a
+#     try/except ImportError and just warns "HyBi protocol will be slower"
+#     without it.
+#
+# Deliberately NOT removed (these look like dead weight but are load-bearing):
+#   * libLLVM.so.20 (170 MB) and libgallium (40 MB). Xvfb links libGL.so.1,
+#     which requires libgallium, which requires libLLVM. Removing them stops
+#     Xvfb from starting:
+#       "Error loading shared library libgallium-...: needed by libGL.so.1"
+#     This was tried; it appeared to work because Xvfb was already running.
+#     It only fails on the NEXT container start -- so always re-test in a NEW
+#     container rather than mutating a live one.
+# ---------------------------------------------------------------------------
+RUN \
+  echo "**** install packages ****" && \
+  apk add --no-cache \
+    adwaita-icon-theme \
+    bash \
+    breeze-cursors \
+    chromium \
+    dbus \
+    dbus-x11 \
+    docker-cli \
+    font-dejavu \
+    font-noto-cjk \
+    libcap-setcap \
+    mousepad \
+    novnc \
+    openbox \
+    py3-xdg \
+    setxkbmap \
+    st \
+    supervisor \
+    tint2 \
+    util-linux-misc \
+    websockify \
+    x11vnc \
+    xdg-utils \
+    xkeyboard-config \
+    xterm \
+    xvfb && \
+  echo "**** application tweaks ****" && \
+  ln -sf /usr/bin/st /usr/bin/x-terminal-emulator && \
+  echo "**** prune unused GPU drivers (keep the software rasteriser) ****" && \
+  find /usr/lib/gallium-pipe -type f ! -name 'pipe_swrast.so' -delete 2>/dev/null || true && \
+  echo "**** prune CJK serif fonts (Sans covers every UI/page case) ****" && \
+  rm -f /usr/share/fonts/noto/NotoSerifCJK-*.ttc && \
+  echo "**** prune numpy/openblas (websockify treats numpy as optional) ****" && \
+  rm -rf \
+    /usr/lib/python3.12/site-packages/numpy* \
+    /usr/lib/libopenblas*.so && \
+  echo "**** prune docs and caches ****" && \
+  rm -rf \
+    /var/cache/apk/* \
+    /tmp/* \
+    /usr/share/doc \
+    /usr/share/man && \
+  echo "**** rebuild font cache after pruning ****" && \
+  fc-cache -f > /dev/null 2>&1 || true && \
+  echo "**** resulting size ****" && \
+  du -sh /usr/lib /usr/share 2>/dev/null
+
+RUN \
+  echo "**** create abc user ****" && \
+  addgroup -g 1000 abc && \
+  adduser -u 1000 -G abc -s /bin/bash -D abc && \
+  echo "**** allow abc to use docker cli ****" && \
+  addgroup abc docker 2>/dev/null || true && \
+  mkdir -p /config /defaults && \
+  chown -R abc:abc /config
+
+# local files: supervisor programs, init script, openbox defaults
+COPY /root /
+
+RUN \
+  echo "**** fix permissions ****" && \
+  chmod 755 /etc/cont-init.d/10-setup /usr/bin/start-desktop /usr/bin/chromium-webtop && \
+  chmod 644 /etc/supervisor.d/*.ini && \
+  chmod 644 /defaults/menu.xml /defaults/autostart /defaults/tint2rc && \
+  ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html
+
+EXPOSE 3000
+
+VOLUME /config
+
+ENTRYPOINT ["/usr/bin/start-desktop"]

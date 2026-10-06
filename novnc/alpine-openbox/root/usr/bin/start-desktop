@@ -1,0 +1,49 @@
+#!/bin/bash
+#
+# Entrypoint for the noVNC-based webtop images.
+#
+# Starts the whole desktop stack directly (no s6/openrc): Xvfb -> x11vnc ->
+# openbox -> websockify/noVNC, with supervisor keeping each piece alive.
+#
+set -e
+
+DISPLAY="${DISPLAY:-:1}"
+VNC_PORT="${VNC_PORT:-5901}"
+NOVNC_PORT="${NOVNC_PORT:-3000}"
+VNC_RESOLUTION="${VNC_RESOLUTION:-1280x800}"
+VNC_DEPTH="${VNC_DEPTH:-24}"
+
+# Allow PUID/PGID overrides for bind-mounted /config, matching linuxserver UX.
+PUID="${PUID:-1000}"
+PGID="${PGID:-1000}"
+if [ "$(id -u abc)" != "$PUID" ] || [ "$(id -g abc)" != "$PGID" ]; then
+  echo "[entrypoint] adjusting abc to ${PUID}:${PGID}"
+  groupmod -o -g "$PGID" abc 2>/dev/null || true
+  usermod  -o -u "$PUID" abc 2>/dev/null || true
+fi
+
+mkdir -p /config /var/log/supervisor
+chown -R abc:abc /config 2>/dev/null || true
+chmod 1777 /tmp
+
+# Seed the desktop defaults into the user's home (idempotent).
+for script in /etc/cont-init.d/*; do
+  [ -e "$script" ] || continue
+  echo "[entrypoint] running $(basename "$script")"
+  bash "$script"
+done
+
+echo "=============================================="
+echo " webtop noVNC"
+echo "   display    : ${DISPLAY}"
+echo "   resolution : ${VNC_RESOLUTION} @ ${VNC_DEPTH}bpp (initial; the"
+echo "                browser resizes the desktop to its own window)"
+echo "   vnc port   : ${VNC_PORT} (internal, loopback only)"
+echo "   web port   : ${NOVNC_PORT}"
+echo "   user       : abc (${PUID}:${PGID})"
+echo "=============================================="
+
+# Hand the resolved values to supervisor so the .ini files stay static.
+export DISPLAY VNC_PORT NOVNC_PORT VNC_RESOLUTION VNC_DEPTH
+
+exec /usr/bin/supervisord -c /etc/supervisord.conf

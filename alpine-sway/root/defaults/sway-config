@@ -1,0 +1,78 @@
+# Sway config for webtop:alpine-sway
+#
+# Nested inside the selkies/pixelflux Wayland display. Copied on first run by
+# the base image's init-selkies-config service (SELKIES_WAYLAND=true path is
+# not used here; this file is seeded via $HOME/.config/sway by the Dockerfile
+# wrapper below).
+
+set $mod Mod4
+
+# Do not pop the "There are errors in your config file" swaynag dialog.
+#
+# The config below is verified clean (`sway --validate` exits 0), but sway 1.12
+# still spawns swaynag on the FIRST boot of a fresh /config volume, when the
+# session script and sway race for the freshly-created config. It is cosmetic
+# and never recurs after a restart, but a desktop served in a browser should
+# not greet the user with an error dialog. Pointing swaynag_command at `true`
+# keeps sway's normal error reporting in the log while suppressing the popup.
+swaynag_command true
+
+# Use the nested output size that selkies provides; do not force a mode.
+output * bg #1d1f21 solid_color
+
+# Application launchers
+bindsym $mod+Return exec foot
+bindsym $mod+d exec fuzzel
+bindsym $mod+Shift+q kill
+
+# Clipboard
+bindsym $mod+c exec wl-copy
+bindsym $mod+v exec wl-paste
+
+# Screenshots
+bindsym Print exec grim -g "$(slurp)" - | wl-copy
+bindsym $mod+Print exec grim - | wl-copy
+
+# Reload / exit
+bindsym $mod+Shift+c reload
+bindsym $mod+Shift+e exec swaynag -t warning -m 'Exit sway?' -b 'Yes' 'swaymsg exit'
+
+# Floating / tiling
+bindsym $mod+Shift+space floating toggle
+bindsym $mod+space focus mode_toggle
+
+# Layout basics
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+bindsym $mod+b splith
+bindsym $mod+v splitv
+
+# Workspaces
+set $ws1 "1"
+set $ws2 "2"
+set $ws3 "3"
+set $ws4 "4"
+bindsym $mod+1 workspace $ws1
+bindsym $mod+2 workspace $ws2
+bindsym $mod+3 workspace $ws3
+bindsym $mod+4 workspace $ws4
+bindsym $mod+Shift+1 move container to workspace $ws1
+bindsym $mod+Shift+2 move container to workspace $ws2
+bindsym $mod+Shift+3 move container to workspace $ws3
+bindsym $mod+Shift+4 move container to workspace $ws4
+
+# Autostart: status bar
+#
+# NOTE: do NOT use `bar { swaybar_command waybar }`. swaybar_command expects a
+# swaybar-protocol binary; pointing it at waybar makes sway report
+# "Error(s) loading config!" and pop a swaynag dialog on every start.
+# waybar is a standalone layer-shell client, so it is simply exec'd instead.
+# Wait briefly for the wayland socket so the first launch does not race
+# selkies coming up.
+exec sh -c 'for i in 1 2 3 4 5; do [ -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY:-wayland-1}" ] && break; sleep 1; done; exec waybar'

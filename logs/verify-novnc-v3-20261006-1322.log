@@ -1,0 +1,56 @@
+==============================================
+ verifying webtop:alpine-openbox-novnc
+   probe host : 172.28.0.1:3140
+==============================================
+   waiting 35s for the session to come up...
+   [ OK ] container is running
+   [ OK ] service 'xvnc' is RUNNING
+   [ OK ] service 'openbox' is RUNNING
+   [ OK ] service 'novnc' is RUNNING
+   [ OK ] core tool 'chromium' is present
+   [ OK ] core tool 'openbox' is present
+   [ OK ] core tool 'wine' is present
+   [ OK ] docker cli is absent (removed in v2)
+   [ OK ] wine helper 'wine-webtop' is present
+   [ OK ] wine helper 'wine-prefix-init' is present
+   [ OK ] Openbox menu.xml parses (no libxml2 parser errors)
+   [ OK ] openbox theme is Artwiz-boxed (LinuxServer style)
+   [ OK ] openbox titleLayout is NLMC (as in the LinuxServer image)
+   [ OK ] Artwiz-boxed themerc is installed
+   [ OK ] 'sans' resolves to Noto Sans (NotoSans-Regular.ttf)
+   [ OK ] C-S-d keybind present (LinuxServer's only extra binding)
+   [ OK ] no panel: tint2 is not installed
+   [ OK ] no tint2 supervisor entry
+   [ OK ] VNC server completed an RFB handshake
+   [ OK ] framebuffer reports 1280x800
+   [info] idle desktop framebuffer has 2 unique colours (panel-less: expect ~2)
+   [ OK ] noVNC responds HTTP 200
+   [ OK ] served page is the noVNC UI
+   waiting 40s for Chromium to map a window...
+   [ OK ] Chromium opens a real window via the menu launcher
+          _NET_WM_NAME(UTF8_STRING) = "about:blank - Chromium"
+   [ OK ] desktop resizes on request (SetDesktopSize honoured, after=(1500, 850))
+   [ OK ] framebuffer reports the requested size after the resize
+   [ OK ] the open window repaints at the new size (610 unique colours)
+   waiting up to 240s for the Wine prefix, loaders and notepad window...
+          wine_version=wine-10.7
+          wine_prefix=ready
+          cmd64=Microsoft Windows 10.0.19043
+          cmd32=Microsoft Windows 10.0.19043
+          cjk_fonts=65
+          notepad_procs=1
+          window=_NET_WM_NAME(UTF8_STRING) = "about:blank - Chromium" WM_CLASS(STRING) = "chromium-browser", "Chromium-browser"
+          window=_NET_WM_NAME(UTF8_STRING) = "Untitled - Notepad" WM_CLASS(STRING) = "notepad.exe", "notepad.exe"
+   [ OK ] wine runs (wine-10.7)
+   [ OK ] Wine prefix was built under /config
+   [ OK ] 64-bit loader runs a Windows program (wine cmd /c ver)
+   [ OK ] 32-bit WoW64 runs an i386 PE (syswow64\cmd.exe)
+   [ OK ] Wine sees the image's Noto fonts (65 entries via fontconfig)
+   [ OK ] wine-webtop notepad maps a real window
+          window=_NET_WM_NAME(UTF8_STRING) = "Untitled - Notepad" WM_CLASS(STRING) = "notepad.exe", "notepad.exe"
+   [ OK ] desktop still paints after the Chromium and Wine tests (908 unique colours)
+
+==============================================
+ passed: 33   failed: 0
+==============================================
+ Tip: inspect with  docker exec -it wt-verify-novnc supervisorctl status

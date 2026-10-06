@@ -1,0 +1,11 @@
+# Runtime data of the container: Wine prefix, Chromium profile, desktop config.
+# Created by the /config bind mount (./config in docker-compose.yml). It is
+# hundreds of MB and completely reproducible -- never commit it.
+/config/
+
+# Python bytecode left by running the helper scripts
+__pycache__/
+*.pyc
+
+# Workspace/agent bookkeeping, not part of the image project itself
+/对话索引.md

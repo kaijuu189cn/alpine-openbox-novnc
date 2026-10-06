@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Openbox root menu for webtop:alpine-openbox.
+
+  The Chromium entry calls /usr/bin/chromium-webtop, NOT /usr/bin/chromium.
+  Raw `chromium` inherits Alpine's CHROMIUM_FLAGS="--ozone-platform-hint=auto",
+  which makes it probe for Wayland and leave an unmapped 10x10 stub window, and
+  it stops on the first-run Terms of Service dialog. The wrapper pins X11 and
+  skips first-run, so the browser actually opens. See that script for details.
+-->
+<openbox_menu xmlns="http://openbox.org/3.4/menu">
+
+<menu id="root-menu" label="MENU">
+  <item label="Web Browser (Chromium)">
+    <action name="Execute">
+      <command>/usr/bin/chromium-webtop</command>
+      <startupnotify><enabled>yes</enabled></startupnotify>
+    </action>
+  </item>
+  <separator />
+  <item label="Terminal (st)">
+    <action name="Execute"><command>/usr/bin/st</command></action>
+  </item>
+  <item label="Terminal (xterm)">
+    <action name="Execute"><command>/usr/bin/xterm</command></action>
+  </item>
+  <item label="Text Editor">
+    <action name="Execute"><command>/usr/bin/mousepad</command></action>
+  </item>
+  <separator />
+  <item label="Reconfigure Openbox">
+    <action name="Reconfigure" />
+  </item>
+  <item label="Restart Openbox">
+    <action name="Restart" />
+  </item>
+</menu>
+
+</openbox_menu>

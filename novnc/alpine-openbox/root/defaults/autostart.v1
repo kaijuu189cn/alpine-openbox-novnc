@@ -1,0 +1,16 @@
+# Openbox autostart for webtop:alpine-openbox (noVNC).
+#
+# Started via openbox-session. Keep every entry defensive: a missing optional
+# binary must never abort the session.
+#
+# A panel makes a browser-served desktop far more usable, so start tint2 if it
+# is present.
+if command -v tint2 > /dev/null 2>&1; then
+  tint2 &
+fi
+
+# Prime the Chromium profile on first boot so the user's first menu click does
+# not pay the profile-creation cost (and so the first-run state is settled).
+if [ ! -d "$HOME/.config/chromium" ]; then
+  mkdir -p "$HOME/.config/chromium" 2>/dev/null || true
+fi

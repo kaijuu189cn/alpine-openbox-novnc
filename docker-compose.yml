@@ -1,0 +1,32 @@
+# webtop:alpine-openbox-novnc
+#
+# Build first:
+#   ./scripts/build.sh
+#
+# The web UI (noVNC) is on container port 3000.
+services:
+  webtop:
+    image: webtop:alpine-openbox-novnc
+    container_name: webtop
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      # Size the desktop STARTS at. The browser resizes it to match its own
+      # window (noVNC resize=remote + Xvnc), so this is not a fixed resolution.
+      - VNC_RESOLUTION=1280x800
+      # - VNC_DEPTH=24
+    volumes:
+      - ./config:/config
+      # NOTE (v2): docker-cli is no longer part of the image, so there is no
+      # docker.sock mount here any more. If you re-add docker-cli yourself and
+      # mount the socket, be aware that it grants the container
+      # host-root-equivalent access.
+    ports:
+      # host:container -- the noVNC web UI
+      - "3000:3000"
+      # Uncomment to also expose VNC directly to a native client.
+      # NOTE: x11vnc runs with -nopw, so do not expose this to untrusted networks.
+      # - "5901:5901"
+    shm_size: "512mb"
+    restart: unless-stopped

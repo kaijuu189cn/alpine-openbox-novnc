@@ -1,0 +1,84 @@
+#!/bin/sh
+#
+# openbox-lsio-style -- give this image the LinuxServer.io openbox look.
+#
+# WHERE THE VALUES COME FROM
+# --------------------------
+# Diffed linuxserver/webtop:alpine-openbox (`webtop1`, /config/.config/openbox/
+# rc.xml, 790 lines) against Alpine's stock /etc/xdg/openbox/rc.xml (743 lines).
+# Ignoring whitespace and line wrapping, there are exactly THREE semantic
+# differences, and everything else -- the <menu> delays, showIcons, the
+# mousebinds (including Root Right-click -> root-menu), focus/placement/
+# dragThreshold, and all six theme fonts (sans 8 bold titles, 9 normal menus) --
+# is identical:
+#
+#   1. theme name       Clearlooks   -> Artwiz-boxed
+#   2. titleLayout      NLIMC        -> NLMC   (no minimise button)
+#   3. one extra keybind C-S-d        -> ToggleDecorations
+#
+# Artwiz-boxed is not a third-party theme: Alpine's own `openbox` package ships
+# it as a 3.7 kB text themerc (/usr/share/themes/Artwiz-boxed/openbox-3), so no
+# theme files need to be copied at all.
+#
+# The script is idempotent and fails loudly if the expected stock values are not
+# present, so a future Alpine that renames the default theme breaks the build
+# instead of silently shipping the old look.
+#
+# USAGE
+#   openbox-lsio-style [/etc/xdg/openbox/rc.xml]
+#
+set -eu
+
+RC="${1:-/etc/xdg/openbox/rc.xml}"
+
+[ -f "$RC" ] || { echo "openbox-lsio-style: no such file: $RC" >&2; exit 1; }
+
+fail() { echo "openbox-lsio-style: $*" >&2; exit 1; }
+
+# --- 1/2. theme name + title layout --------------------------------------
+# Only patch the stock values; if the file is already styled this is a no-op.
+if grep -q '<name>Artwiz-boxed</name>' "$RC"; then
+  echo "theme already Artwiz-boxed"
+else
+  grep -q '<name>Clearlooks</name>' "$RC" || \
+    fail "expected '<name>Clearlooks</name>' (Alpine's default theme) in $RC; refusing to guess"
+  sed -i 's|<name>Clearlooks</name>|<name>Artwiz-boxed</name>|' "$RC"
+  echo "theme: Clearlooks -> Artwiz-boxed"
+fi
+
+if grep -q '<titleLayout>NLMC</titleLayout>' "$RC"; then
+  echo "titleLayout already NLMC"
+else
+  grep -q '<titleLayout>NLIMC</titleLayout>' "$RC" || \
+    fail "expected '<titleLayout>NLIMC</titleLayout>' in $RC; refusing to guess"
+  sed -i 's|<titleLayout>NLIMC</titleLayout>|<titleLayout>NLMC</titleLayout>|' "$RC"
+  echo "titleLayout: NLIMC -> NLMC"
+fi
+
+# --- 3. the C-S-d keybind -------------------------------------------------
+# Inserted with awk (busybox sed's multiline replacement is not dependable) just
+# before </keyboard>, matching the indentation of the surrounding entries.
+if grep -q 'key="C-S-d"' "$RC"; then
+  echo "keybind C-S-d already present"
+else
+  grep -q '</keyboard>' "$RC" || fail "no </keyboard> in $RC; cannot add the C-S-d keybind"
+  tmp="${RC}.lsio.$$"
+  awk '
+    /<\/keyboard>/ && !done {
+      print "  <keybind key=\"C-S-d\">"
+      print "    <action name=\"ToggleDecorations\"/>"
+      print "  </keybind>"
+      done = 1
+    }
+    { print }
+  ' "$RC" > "$tmp"
+  mv "$tmp" "$RC"
+  echo "keybind: added C-S-d -> ToggleDecorations"
+fi
+
+# --- verify ---------------------------------------------------------------
+grep -q '<name>Artwiz-boxed</name>' "$RC" || fail "theme name did not land in $RC"
+grep -q '<titleLayout>NLMC</titleLayout>' "$RC" || fail "titleLayout did not land in $RC"
+grep -q 'key="C-S-d"' "$RC" || fail "C-S-d keybind did not land in $RC"
+
+echo "openbox-lsio-style: $RC styled"

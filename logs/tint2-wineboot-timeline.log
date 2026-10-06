@@ -1,0 +1,97 @@
+# Evidence: Wine makes the tint2 panel segfault
+
+## 1. What the user sees
+
+Fresh volume, first boot: the panel is drawn, then disappears, then the whole
+screen is black except the cursor. It used to stay broken until the container
+was recreated.
+
+Sampler inside the container, every 5s:
+
+    t=0s   tint2=[40]   colours=780  wineboot=[57]   <- desktop coming up, panel painting
+    t=5s   tint2=[]     colours=633  wineboot=[150]  <- panel process gone, wineboot running
+    t=10s  tint2=[]     colours=2    wineboot=[]     <- black from here on
+    t=125s tint2=[]     colours=2
+
+## 2. It is a SIGSEGV, not a clean exit
+
+supervisord.log (first seen on the deployed container, which is why it took a
+supervised tint2 to notice):
+
+    WARN exited: tint2 (terminated by SIGSEGV (core dumped); not expected)
+
+Each restart crashed again within 4-24s: 14 crashes over the first ~2 minutes
+of a fresh volume.
+
+## 3. Ruled out
+
+  * OOM            -- /sys/fs/cgroup/memory.events: oom_kill 0, memory.max=max
+  * X screen saver -- xset q timeout stayed 600s, `xset s reset` changed nothing
+  * other clients  -- openbox / Xvfb / x11vnc ran through it untouched
+  * no wine        -- the v1 baseline image (no wine installed) never shows it
+  * pgrep -x       -- matches nothing in this image (busybox semantics); it
+                      reports tint2 dead when it is alive and vice versa. Use
+                      `pgrep tint2` or `ps -eo pid,args | grep`.
+
+## 4. gdb backtrace (the actual cause)
+
+Ran tint2 under gdb as a supervised program in a throwaway container
+(see dbg-tint2-gdb.sh):
+
+    Thread 1 "tint2" received signal SIGSEGV, Segmentation fault.
+    0x00005599f3abc213 in gradient_point_area_dependent ()
+    #0 gradient_point_area_dependent
+    #1 gradient_init
+    #2 area_gradients_create
+    #3 set_task_state
+    #5 taskbar_refresh_tasklist
+    #6 handle_event_property_notify
+    #7 handle_x_events
+    #8 run_tint2_event_loop
+    #9 tint2
+    #10 main
+
+A PropertyNotify makes tint2 refresh the taskbar, and its gradient code crashes.
+That is a tint2 bug; the trigger is Wine's window churn. Wine spawns a whole
+process family to build a prefix or start an app -- services.exe,
+winedevice.exe, plugplay.exe, explorer.exe /desktop -- and each one brings X
+windows and taskbar entries up and down.
+
+## 5. Fixes
+
+(a) Build the Wine prefix HEADLESS: wine-prefix-init --headless. wineboot does
+    not need a display (it unpacks drive_c, enumerates fonts through fontconfig
+    and writes the registry), so with no DISPLAY there is no X connection, no
+    window churn and no crash:
+
+        headless=no   (DISPLAY=:1)  -> 14 crashes
+        headless=yes  (DISPLAY='')  ->  0 crashes   (same 90s test container)
+
+(b) tint2 runs under supervisor (autorestart=true). Launching a Windows app
+    still costs exactly one crash -- Wine has to start that process family --
+    and supervisor brings the panel back within a second (verified on the
+    deployed webtop3: 1 crash, panel back, uptime kept growing).
+
+## 6. Self-inflicted trap worth remembering
+
+The first --headless implementation used `unset DISPLAY`, but the script then
+ran `export DISPLAY="${DISPLAY-:1}"`, and that default fires only when DISPLAY
+is *unset* -- so it silently put :1 back. "Headless" was a no-op and the crashes
+continued (4 instead of 14). Setting an explicitly empty value is what works:
+
+    if [ "${1:-}" = "--headless" ]; then DISPLAY=""; HEADLESS=yes; fi
+    export DISPLAY="${DISPLAY-:1}"
+
+The init log now states the mode outright:
+`creating prefix /config/.wine (headless=yes DISPLAY='')`
+
+## 7. Why "RUNNING" was not a good enough check
+
+A crash loop samples as RUNNING roughly half the time, so "service is RUNNING"
+passed while the panel was restarting every 2 seconds. scripts/verify.sh now
+asserts instead:
+
+  * zero `tint2.*SIGSEGV` in supervisord.log before any Windows app is launched
+  * the same tint2 pid before and after a 12s wait (startup, and again after the
+    Wine app launch)
+  * the desktop still delivers >20 unique colours afterwards

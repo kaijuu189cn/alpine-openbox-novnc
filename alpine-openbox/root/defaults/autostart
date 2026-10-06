@@ -1,0 +1,7 @@
+# Openbox autostart for webtop:alpine-openbox
+#
+# A panel is useful in a browser-served desktop, so start tint2 when present.
+# Keep this defensive: a missing optional binary must never abort the session.
+if command -v tint2 > /dev/null 2>&1; then
+  tint2 &
+fi

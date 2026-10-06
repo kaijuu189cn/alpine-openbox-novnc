@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+# First-run setup for the noVNC webtop images.
+#
+# Runs from the entrypoint (see /usr/bin/start-desktop); seeds the unprivileged
+# user's home with the desktop defaults. Everything is idempotent so a
+# persistent /config volume is only populated once.
+#
+set -e
+
+HOME_DIR="${HOME:-/config}"
+: "${DISPLAY:=:1}"
+
+echo "[init] setting up ${HOME_DIR}"
+
+mkdir -p \
+  "$HOME_DIR/.config/openbox" \
+  "$HOME_DIR/.config/chromium" \
+  "$HOME_DIR/.XDG" \
+  "$HOME_DIR/Desktop" \
+  "$HOME_DIR/.wine"
+
+# --- Openbox: menu + autostart -------------------------------------------
+# On a fresh volume there is no user copy, so the default is installed. On an
+# existing volume we must not clobber anything the user edited -- but a volume
+# created by the pre-Wine image (v1) still holds the OLD default, which would
+# silently hide the new Wine menu entries. So: install when missing, refresh
+# when the file is byte-identical to a default we shipped before, leave every
+# other file alone.
+seed_default() {  # seed_default <name under /defaults> <target path>
+  local name="$1" target="$2" old
+  [ -f "/defaults/$name" ] || return 0
+
+  if [ ! -f "$target" ]; then
+    cp "/defaults/$name" "$target"
+    return 0
+  fi
+  cmp -s "$target" "/defaults/$name" && return 0   # already current
+
+  for old in "/defaults/$name".v[0-9]*; do
+    [ -f "$old" ] || continue
+    if cmp -s "$target" "$old"; then
+      echo "[init] upgrading unmodified $(basename "$target") to the current default"
+      cp "/defaults/$name" "$target"
+      return 0
+    fi
+  done
+
+  echo "[init] keeping user-modified $(basename "$target")"
+}
+
+seed_default menu.xml  "$HOME_DIR/.config/openbox/menu.xml"
+seed_default autostart "$HOME_DIR/.config/openbox/autostart"
+# The window-manager style (Artwiz-boxed theme, NLMC title layout, C-S-d
+# keybind) copied from linuxserver/webtop:alpine-openbox -- see
+# /usr/local/bin/openbox-lsio-style. Same rule as above: install it when the
+# user has none, keep whatever they wrote themselves.
+seed_default rc.xml    "$HOME_DIR/.config/openbox/rc.xml"
+
+# The system-wide menu and rc.xml are what Openbox falls back to when the user
+# has neither. Replace them too, so a session always gets our entries (the
+# working Chromium launcher, the Wine menu) and the LinuxServer look, rather
+# than Alpine's stock menu, which references programs that are not installed
+# (gnome-calculator, ...).
+if [ -f /defaults/menu.xml ]; then
+  cp /defaults/menu.xml /etc/xdg/openbox/menu.xml
+fi
+if [ -f /defaults/rc.xml ]; then
+  cp /defaults/rc.xml /etc/xdg/openbox/rc.xml
+fi
+
+# --- tint2 panel: removed in v3 ------------------------------------------
+# The top panel (clock + window buttons) is no longer part of the image: the
+# tint2 package is not installed and there is no supervisor entry for it. What
+# used to be seeded here (/defaults/tint2rc) is gone. If an old volume still
+# carries ~/.config/tint2 it is simply ignored.
+
+chmod 700 "$HOME_DIR/.XDG" 2>/dev/null || true
+chown -R abc:abc "$HOME_DIR" 2>/dev/null || true
+
+echo "[init] done"
