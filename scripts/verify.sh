@@ -56,7 +56,7 @@ echo "=============================================="
 docker rm -f "$NAME" > /dev/null 2>&1 || true
 docker volume rm "${NAME}-vol" > /dev/null 2>&1 || true
 
-docker run -d --name "$NAME" -v "${NAME}-vol:/abc" \
+docker run -d --name "$NAME" -v "${NAME}-vol:/home/abc" \
   -p "${PORT}:3000" "$IMAGE" > /dev/null 2>&1
 
 echo "   waiting 35s for the session to come up..."
@@ -110,6 +110,30 @@ else
   echo "   [info] wine is not installed (BUILD_PACKAGES did not ask for it)"
 fi
 
+# xdotool / xwininfo ride along with the standard (wine) build: the first is for
+# driving the desktop from scripts, the second for looking at the window tree
+# when something misbehaves. Check that they actually work, not just exist.
+for tool in xdotool xwininfo; do
+  if docker exec "$NAME" sh -c "command -v $tool" > /dev/null 2>&1; then
+    case "$tool" in
+      xdotool)
+        if docker exec "$NAME" sh -c 'DISPLAY=:1 xdotool getmouselocation' 2>/dev/null | grep -q '^x:[0-9]'; then
+          ok "xdotool works (reads the pointer position from :1)"
+        else
+          bad "xdotool is installed but cannot talk to the X display"
+        fi ;;
+      xwininfo)
+        if docker exec "$NAME" sh -c 'DISPLAY=:1 xwininfo -root -children' 2>/dev/null | grep -q '0x'; then
+          ok "xwininfo works (lists the root window's children)"
+        else
+          bad "xwininfo is installed but cannot talk to the X display"
+        fi ;;
+    esac
+  else
+    echo "   [info] $tool is not in this image (lean build)"
+  fi
+done
+
 # --- 1c. image contract: docker cli gone, wine helpers installed ---------
 if docker exec "$NAME" sh -c 'command -v docker' > /dev/null 2>&1; then
   bad "docker cli is installed (v2 removed it)"
@@ -154,12 +178,12 @@ fi
 # Our look: theme Artwiz-boxed, title layout NLMC, and the font family rc.xml asks for
 # ("sans") must actually resolve to Noto Sans as it does there -- without
 # font-noto it silently falls back to DejaVu and the titles look different.
-if docker exec "$NAME" sh -c 'grep -q "<name>Artwiz-boxed</name>" /abc/.config/openbox/rc.xml' > /dev/null 2>&1; then
+if docker exec "$NAME" sh -c 'grep -q "<name>Artwiz-boxed</name>" /home/abc/.config/openbox/rc.xml' > /dev/null 2>&1; then
   ok "openbox theme is Artwiz-boxed"
 else
   bad "openbox theme is not Artwiz-boxed in the user rc.xml"
 fi
-if docker exec "$NAME" sh -c 'grep -q "<titleLayout>NLMC</titleLayout>" /abc/.config/openbox/rc.xml' > /dev/null 2>&1; then
+if docker exec "$NAME" sh -c 'grep -q "<titleLayout>NLMC</titleLayout>" /home/abc/.config/openbox/rc.xml' > /dev/null 2>&1; then
   ok "openbox titleLayout is NLMC (no minimise button)"
 else
   bad "openbox titleLayout is not NLMC"
@@ -175,7 +199,7 @@ if echo "$SANS" | grep -q "NotoSans"; then
 else
   bad "'sans' resolves to '${SANS:-nothing}', not Noto Sans"
 fi
-if docker exec "$NAME" sh -c 'grep -q "key=\"C-S-d\"" /abc/.config/openbox/rc.xml' > /dev/null 2>&1; then
+if docker exec "$NAME" sh -c 'grep -q "key=\"C-S-d\"" /home/abc/.config/openbox/rc.xml' > /dev/null 2>&1; then
   ok "C-S-d keybind present (toggles window decorations)"
 else
   bad "C-S-d keybind missing from rc.xml"
@@ -274,7 +298,7 @@ fi
 # failure that looks exactly like the original bug.
 docker cp "$HERE/chromium-regression.sh" "$NAME:/tmp/chromium-regression.sh" > /dev/null 2>&1
 docker exec "$NAME" chmod 755 /tmp/chromium-regression.sh > /dev/null 2>&1
-docker exec "$NAME" rm -f /abc/chromium-regression.txt > /dev/null 2>&1
+docker exec "$NAME" rm -f /home/abc/chromium-regression.txt > /dev/null 2>&1
 docker exec -d "$NAME" /tmp/chromium-regression.sh
 
 # Poll instead of sleeping a fixed 40s: on a loaded host (another verification
@@ -283,11 +307,11 @@ docker exec -d "$NAME" /tmp/chromium-regression.sh
 # failure of the regression this check exists to catch.
 echo "   waiting up to 120s for Chromium to map a window..."
 for _ in $(seq 1 24); do
-  CHROME_OUT="$(docker exec "$NAME" cat /abc/chromium-regression.txt 2>/dev/null)"
+  CHROME_OUT="$(docker exec "$NAME" cat /home/abc/chromium-regression.txt 2>/dev/null)"
   echo "$CHROME_OUT" | grep -qi chromium && break
   sleep 5
 done
-CHROME_OUT="$(docker exec "$NAME" cat /abc/chromium-regression.txt 2>/dev/null)"
+CHROME_OUT="$(docker exec "$NAME" cat /home/abc/chromium-regression.txt 2>/dev/null)"
 
 if echo "$CHROME_OUT" | grep -qi "chromium"; then
   ok "Chromium opens a real window via the menu launcher"
@@ -335,14 +359,14 @@ if [ "$HAS_WINE" = "1" ]; then
   # teardown and the prefix may already have been primed by the Openbox autostart.
   docker cp "$HERE/wine-regression.sh" "$NAME:/tmp/wine-regression.sh" > /dev/null 2>&1
   docker exec "$NAME" chmod 755 /tmp/wine-regression.sh > /dev/null 2>&1
-  docker exec "$NAME" rm -f /abc/wine-regression.txt > /dev/null 2>&1
+  docker exec "$NAME" rm -f /home/abc/wine-regression.txt > /dev/null 2>&1
   docker exec -d "$NAME" /tmp/wine-regression.sh
 
   echo "   waiting up to 240s for the Wine prefix, loaders and notepad window..."
   WINE_OUT=""
   for _ in $(seq 1 24); do
     sleep 10
-    WINE_OUT="$(docker exec "$NAME" cat /abc/wine-regression.txt 2>/dev/null)"
+    WINE_OUT="$(docker exec "$NAME" cat /home/abc/wine-regression.txt 2>/dev/null)"
     echo "$WINE_OUT" | grep -q '^window=' && break
   done
 
@@ -357,9 +381,9 @@ if [ "$HAS_WINE" = "1" ]; then
   fi
 
   if echo "$WINE_OUT" | grep -q 'wine_prefix=ready'; then
-    ok "wine built its prefix on demand under /abc"
+    ok "wine built its prefix on demand under /home/abc"
   else
-    bad "wine did not create a prefix under /abc"
+    bad "wine did not create a prefix under /home/abc"
   fi
 
   if echo "$WINE_OUT" | grep -qi 'cmd64=.*Microsoft Windows'; then

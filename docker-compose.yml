@@ -11,7 +11,7 @@
 # Everything below can be overridden from the environment or a .env file:
 #
 #   WEB_PORT=3003 docker compose up -d --build     # host port for the noVNC UI
-#   CONFIG_DIR=/srv/webtop docker compose up -d    # where /abc lives
+#   CONFIG_DIR=/srv/webtop docker compose up -d    # where /home/abc lives
 #   APK_MIRROR=mirrors.aliyun.com docker compose up -d --build
 #
 # NOTE ON THE DEFAULT PORT: the UI defaults to 3000, which is the port this
@@ -30,9 +30,23 @@ services:
         VERSION: ${TAG:-novnc}
         # compose cannot substitute a live date; scripts/build.sh passes one.
         BUILD_DATE: ${BUILD_DATE:-compose-build}
-        # Extra Alpine packages to add, space separated. Wine is the usual one:
-        #   BUILD_PACKAGES=wine IMAGE=alpine:openbox-novnc-wine docker compose up -d --build
-        BUILD_PACKAGES: ${BUILD_PACKAGES:-}
+        # Extra Alpine packages, space separated. THE STANDARD BUILD IS THE WINE
+        # EDITION -- these three, and this is what alpine:openbox-novnc means:
+        #
+        #   wine       run Windows programs (Alpine 11.x, 32-bit WoW64 included)
+        #   xdotool    synthetic input and window geometry, for scripts
+        #   xwininfo   inspect the X window tree, for when a window misbehaves
+        #
+        # The lean edition (chromium + openbox + Xvnc only, 1.47 GB) is the
+        # extra one and is NOT part of the normal build. Ask for it explicitly
+        # if you want it, under its own tag:
+        #
+        #   BUILD_PACKAGES="" IMAGE=alpine:openbox-novnc-lean docker compose build
+        #
+        # The stack's compose.yaml carries the same three packages in its own
+        # build args, so rebuilding there produces this image:
+        #   /data/stacks/webtop3/compose.yaml
+        BUILD_PACKAGES: ${BUILD_PACKAGES:-wine xdotool xwininfo}
     image: ${IMAGE:-alpine:openbox-novnc}
     container_name: openbox
 
@@ -49,7 +63,7 @@ services:
     volumes:
       # Wine prefix, Chromium profile and the desktop config live here. Point
       # it somewhere else with CONFIG_DIR=/path docker compose up -d.
-      - "${CONFIG_DIR:-./abc}:/abc"
+      - "${CONFIG_DIR:-./abc}:/home/abc"
 
     ports:
       # host:container -- the noVNC web UI (container side is always 3000).

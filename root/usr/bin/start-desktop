@@ -13,7 +13,7 @@ NOVNC_PORT="${NOVNC_PORT:-3000}"
 VNC_RESOLUTION="${VNC_RESOLUTION:-1280x800}"
 VNC_DEPTH="${VNC_DEPTH:-24}"
 
-# Allow PUID/PGID overrides for a bind-mounted /abc, so the files it holds
+# Allow PUID/PGID overrides for a bind-mounted /home/abc, so the files it holds
 # end up owned by the user you asked for.
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
@@ -23,8 +23,8 @@ if [ "$(id -u abc)" != "$PUID" ] || [ "$(id -g abc)" != "$PGID" ]; then
   usermod  -o -u "$PUID" abc 2>/dev/null || true
 fi
 
-mkdir -p /abc /var/log/supervisor
-chown -R abc:abc /abc 2>/dev/null || true
+mkdir -p /home/abc /var/log/supervisor
+chown -R abc:abc /home/abc 2>/dev/null || true
 chmod 1777 /tmp
 
 # Seed the desktop defaults into the user's home (idempotent).

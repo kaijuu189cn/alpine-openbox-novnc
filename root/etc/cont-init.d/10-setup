@@ -4,11 +4,11 @@
 #
 # Runs from the entrypoint (see /usr/bin/start-desktop); seeds the unprivileged
 # user's home with the desktop defaults. Everything is idempotent so a
-# persistent /abc volume is only populated once.
+# persistent /home/abc volume is only populated once.
 #
 set -e
 
-HOME_DIR="${HOME:-/abc}"
+HOME_DIR="${HOME:-/home/abc}"
 : "${DISPLAY:=:1}"
 
 echo "[init] setting up ${HOME_DIR}"

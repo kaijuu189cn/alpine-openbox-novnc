@@ -3,8 +3,9 @@
 # alpine:openbox-novnc
 #
 # A from-scratch Alpine + Openbox desktop served over VNC/noVNC, deliberately
-# kept minimal: chromium + openbox (plus wine, if you ask for it), and only what
-# the session needs to run.
+# kept minimal: chromium + openbox + Xvnc, and only what the session needs to
+# run. The standard build adds wine + xdotool + xwininfo through BUILD_PACKAGES;
+# the lean build leaves that empty.
 #
 # IMAGE VARIANTS
 # --------------
@@ -132,18 +133,22 @@ ARG BUILD_DATE
 ARG VERSION
 ARG APK_MIRROR=mirror.nju.edu.cn
 # Extra Alpine packages to install on top of the base set, space separated.
-# This is the hook for anything you want in the image that we do not choose for
-# you -- wine being the obvious one:
+# docker-compose.yml (and the deployed stack's compose.yaml) pass the standard
+# three, so a plain `docker compose build` produces the wine edition:
 #
-#   BUILD_PACKAGES=""                    -> chromium + openbox + Xvnc  (~1.6 GB)
-#   BUILD_PACKAGES="wine"                -> + wine, 32-bit WoW64 included
-#   BUILD_PACKAGES="wine pcmanfm gimp"   -> whatever else you need
+#   wine       run Windows programs (32-bit WoW64 included)
+#   xdotool    synthetic input and window geometry, for scripts
+#   xwininfo   inspect the X window tree, for when a window misbehaves
+#
+#   BUILD_PACKAGES="wine xdotool xwininfo"           -> standard  (~2.1 GB)
+#   BUILD_PACKAGES=""                                -> lean, extra (~1.5 GB)
+#   BUILD_PACKAGES="wine xdotool xwininfo pcmanfm"   -> add whatever else
 #
 # They are installed in the same apk transaction as everything else, so a
 # package that duplicates a dependency costs nothing, and the prune steps below
-# still apply. Nothing else in the image is wine-aware any more: no helper
-# scripts, no menu entries, no .exe association -- `wine` from a terminal is the
-# interface (WINEPREFIX defaults to ~/.wine, i.e. /abc/.wine).
+# still apply. Nothing in the image is wine-aware beyond the package itself: no
+# helper scripts, no menu entries, no .exe association -- `wine` from a terminal
+# is the interface (WINEPREFIX defaults to ~/.wine, i.e. /home/abc/.wine).
 ARG BUILD_PACKAGES=""
 
 LABEL build_version="webtop-novnc version:- ${VERSION} Build-date:- ${BUILD_DATE}"
@@ -175,7 +180,7 @@ RUN \
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     DISPLAY=:1 \
-    HOME=/abc \
+    HOME=/home/abc \
     TITLE=webtop \
     VNC_PORT=5901 \
     NOVNC_PORT=3000 \
@@ -183,7 +188,7 @@ ENV LANG=C.UTF-8 \
     VNC_DEPTH=24
 # NOTE: no WINEPREFIX/WINEDEBUG/WINEDLLOVERRIDES here. If you add wine through
 # BUILD_PACKAGES, pass whatever you need with -e (WINEPREFIX defaults to
-# ~/.wine, which is /abc/.wine).
+# ~/.wine, which is /home/abc/.wine).
 
 # ---------------------------------------------------------------------------
 # Packages + prune, in ONE RUN.
@@ -295,8 +300,8 @@ RUN \
   echo "**** create abc user ****" && \
   addgroup -g 1000 abc && \
   adduser -u 1000 -G abc -s /bin/bash -D abc && \
-  mkdir -p /abc /defaults && \
-  chown -R abc:abc /abc
+  mkdir -p /home/abc /defaults && \
+  chown -R abc:abc /home/abc
 
 # local files: supervisor programs, init script, openbox defaults, noVNC modules
 COPY /root /
@@ -359,6 +364,6 @@ RUN \
 
 EXPOSE 3000
 
-VOLUME /abc
+VOLUME /home/abc
 
 ENTRYPOINT ["/usr/bin/start-desktop"]

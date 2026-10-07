@@ -1,6 +1,6 @@
 ==============================================
- verifying alpine:openbox-novnc-wine
-   probe host : 172.28.0.1:3141
+ verifying alpine:openbox-novnc
+   probe host : 172.28.0.1:3140
 ==============================================
    waiting 35s for the session to come up...
    [ OK ] container is running
@@ -10,6 +10,8 @@
    [ OK ] core tool 'chromium' is present
    [ OK ] core tool 'openbox' is present
    [ OK ] wine is installed (BUILD_PACKAGES asked for it)
+   [ OK ] xdotool works (reads the pointer position from :1)
+   [ OK ] xwininfo works (lists the root window's children)
    [ OK ] docker cli is absent (removed in v2)
    [ OK ] no wine-specific integration in the image
    [ OK ] the seeded desktop menu has no Wine entries
@@ -47,7 +49,7 @@
           window=_NET_WM_NAME(UTF8_STRING) = "about:blank - Chromium" WM_CLASS(STRING) = "chromium-browser", "Chromium-browser"
           window=_NET_WM_NAME(UTF8_STRING) = "Untitled - Notepad" WM_CLASS(STRING) = "notepad.exe", "notepad.exe"
    [ OK ] wine runs (wine-11.0)
-   [ OK ] wine built its prefix on demand under /abc
+   [ OK ] wine built its prefix on demand under /home/abc
    [ OK ] 64-bit loader runs a Windows program (wine cmd /c ver)
    [ OK ] 32-bit WoW64 runs an i386 PE (syswow64\cmd.exe)
    [ OK ] Wine sees the image's Noto fonts (65 entries via fontconfig)
@@ -56,6 +58,6 @@
    [ OK ] desktop still paints after the Chromium and Wine tests (1004 unique colours)
 
 ==============================================
- passed: 38   failed: 0
+ passed: 40   failed: 0
 ==============================================
- Tip: inspect with  docker exec -it wt-v-wine supervisorctl status
+ Tip: inspect with  docker exec -it wt-v-std supervisorctl status
