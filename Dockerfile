@@ -353,10 +353,15 @@ RUN \
   chmod 755 \
     /etc/cont-init.d/10-setup \
     /usr/bin/start-desktop \
-    /usr/bin/chromium-webtop && \
+    /usr/bin/chromium-webtop \
+    /usr/local/bin/openbox-style \
+    /usr/local/bin/wine-fix-shell-folders && \
   chmod 644 /etc/supervisor.d/*.ini && \
   chmod 644 /defaults/* && \
   chmod 644 /usr/share/novnc/app/webtop-adaptive.js && \
+  echo "**** the helpers added for old volumes must be present ****" && \
+  test -s /usr/local/bin/openbox-style && \
+  test -s /usr/local/bin/wine-fix-shell-folders && \
   echo "**** the adaptive-resize script must be present (it arrives with COPY /root) ****" && \
   test -s /usr/share/novnc/app/webtop-adaptive.js && \
   grep -q "app/webtop-adaptive.js" /usr/share/novnc/vnc.html && \

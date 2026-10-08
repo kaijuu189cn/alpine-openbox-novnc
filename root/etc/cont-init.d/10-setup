@@ -74,6 +74,17 @@ fi
 # used to be seeded here (/defaults/tint2rc) is gone. If an old volume still
 # carries ~/.config/tint2 it is simply ignored.
 
+# --- Wine prefix: repair shell-folder links -------------------------------
+# A prefix carries absolute links into the home directory (Desktop, ...) that
+# Wine's shell namespace depends on. A volume that has seen an earlier home
+# (this image used /config, then /abc, now /home/abc) keeps a dangling one, and
+# then comdlg32's modern file dialog crashes the application that opens it --
+# MT5 -> chart right-click -> Templates -> Load Template was the report. Repair
+# before the desktop starts, so a stale volume heals itself on every boot.
+if [ -x /usr/local/bin/wine-fix-shell-folders ]; then
+  /usr/local/bin/wine-fix-shell-folders "${WINEPREFIX:-$HOME_DIR/.wine}" || true
+fi
+
 chmod 700 "$HOME_DIR/.XDG" 2>/dev/null || true
 chown -R abc:abc "$HOME_DIR" 2>/dev/null || true
 

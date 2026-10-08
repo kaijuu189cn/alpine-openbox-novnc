@@ -24,6 +24,7 @@
    [ OK ] C-S-d keybind present (toggles window decorations)
    [ OK ] no panel: tint2 is not installed
    [ OK ] no tint2 supervisor entry
+   [ OK ] a stale Wine shell link (/config/Desktop) is repaired at boot
    [ OK ] VNC server completed an RFB handshake
    [ OK ] framebuffer reports 1280x800
    [info] idle desktop framebuffer has 2 unique colours (panel-less: expect ~2)
@@ -53,11 +54,12 @@
    [ OK ] 64-bit loader runs a Windows program (wine cmd /c ver)
    [ OK ] 32-bit WoW64 runs an i386 PE (syswow64\cmd.exe)
    [ OK ] Wine sees the image's Noto fonts (65 entries via fontconfig)
-   [ OK ] wine-webtop notepad maps a real window
+   [ OK ] wine notepad maps a real window
           window=_NET_WM_NAME(UTF8_STRING) = "Untitled - Notepad" WM_CLASS(STRING) = "notepad.exe", "notepad.exe"
+   [ OK ] the Wine prefix has no dangling shell-folder links
    [ OK ] desktop still paints after the Chromium and Wine tests (1004 unique colours)
 
 ==============================================
- passed: 40   failed: 0
+ passed: 42   failed: 0
 ==============================================
  Tip: inspect with  docker exec -it wt-v-std supervisorctl status

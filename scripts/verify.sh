@@ -220,6 +220,37 @@ else
   ok "no tint2 supervisor entry"
 fi
 
+# --- 1g. an old volume with a dangling Wine shell link repairs itself ----
+# A prefix carries absolute links into the home directory, and this image has
+# moved its home twice (/config -> /abc -> /home/abc). A volume that predates
+# the move keeps a dangling Desktop link, which is what made MT5 die on
+# Templates -> Load Template. Seed exactly that and check the boot repairs it.
+LINKVOL="${NAME}-linkvol"
+LINKC="${NAME}-link"
+docker rm -f "$LINKC" > /dev/null 2>&1
+docker volume rm "$LINKVOL" > /dev/null 2>&1
+docker volume create "$LINKVOL" > /dev/null 2>&1
+docker run --rm --entrypoint sh -v "$LINKVOL":/home/abc "$IMAGE" -c \
+  'mkdir -p /home/abc/.wine/drive_c/users/abc /home/abc/Desktop && \
+   ln -sfn /config/Desktop /home/abc/.wine/drive_c/users/abc/Desktop' > /dev/null 2>&1
+docker run -d --name "$LINKC" -v "$LINKVOL":/home/abc "$IMAGE" > /dev/null 2>&1
+LINK_OK=no
+for _ in $(seq 1 12); do
+  if docker exec "$LINKC" sh -c '[ "$(readlink /home/abc/.wine/drive_c/users/abc/Desktop 2>/dev/null)" = "/home/abc/Desktop" ] && [ -e /home/abc/.wine/drive_c/users/abc/Desktop ]' 2>/dev/null; then
+    LINK_OK=yes
+    break
+  fi
+  sleep 5
+done
+if [ "$LINK_OK" = yes ]; then
+  ok "a stale Wine shell link (/config/Desktop) is repaired at boot"
+else
+  bad "a stale Wine shell link was NOT repaired at boot"
+  docker exec "$LINKC" sh -c 'ls -l /home/abc/.wine/drive_c/users/abc/' 2>/dev/null | sed 's/^/          /' | head -4
+fi
+docker rm -f "$LINKC" > /dev/null 2>&1
+docker volume rm "$LINKVOL" > /dev/null 2>&1
+
 # --- 2/3. VNC handshake and framebuffer size -----------------------------
 docker cp "$HERE/vncprobe.py" "$NAME:/tmp/vncprobe.py" > /dev/null 2>&1
 VNC_OUT="$(docker exec "$NAME" python3 /tmp/vncprobe.py 2>&1)"
@@ -409,10 +440,20 @@ if [ "$HAS_WINE" = "1" ]; then
   fi
 
   if echo "$WINE_OUT" | grep -qi 'window=.*notepad'; then
-    ok "wine-webtop notepad maps a real window"
+    ok "wine notepad maps a real window"
     echo "$WINE_OUT" | grep -i 'window=.*notepad' | head -1 | sed 's/^/          /'
   else
     bad "notepad did NOT map a window (see /tmp/wine-notepad.log)"
+  fi
+
+  # The prefix must have no dangling shell-folder links: Wine's shell namespace
+  # starts at the desktop, and comdlg32's modern file dialog crashes the calling
+  # application when it cannot resolve it (MT5 -> Templates -> Load Template).
+  if docker exec "$NAME" wine-fix-shell-folders --check > /dev/null 2>&1; then
+    ok "the Wine prefix has no dangling shell-folder links"
+  else
+    bad "the Wine prefix has dangling shell-folder links (file dialogs will crash apps)"
+    docker exec "$NAME" wine-fix-shell-folders --check 2>&1 | sed 's/^/          /' | head -6
   fi
 else
   echo "   [info] wine checks skipped (this image has no wine)"

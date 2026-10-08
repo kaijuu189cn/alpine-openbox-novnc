@@ -1,0 +1,111 @@
+#!/bin/sh
+#
+# wine-fix-shell-folders -- repair dangling shell-folder links in a Wine prefix.
+#
+# THE PROBLEM
+# -----------
+# When Wine creates a prefix it links the Windows shell folders inside
+# drive_c/users/<user>/ to the real directories in $HOME:
+#
+#     .wine/drive_c/users/abc/Desktop -> $HOME/Desktop
+#
+# If the prefix was created under a different home directory than the one the
+# container uses now -- this image has moved its home twice (/config -> /abc ->
+# /home/abc), and a mounted volume carries the prefix across those moves -- then
+# the link points at a directory that no longer exists.
+#
+# Wine's shell namespace starts at the desktop, so a dangling Desktop link makes
+# it fail to resolve the folder at all (visible with WINEDEBUG=+shell as
+# SHGetFolderPathAndSubDirW returning 0x80070003, ERROR_PATH_NOT_FOUND). The
+# modern file dialog in comdlg32 (CLSID_FileOpenDialog / IFileDialog) then
+# dereferences the null shell folder and dies:
+#
+#     Exception C0000005 at comdlg32.dll+0x...  (read to 0x0)
+#
+# In practice the whole application disappears -- MT5's chart right-click ->
+# Templates -> Load Template was the report that led here. Apps that only use
+# the old GetOpenFileName dialog (notepad) still worked, which is why this hid
+# for so long.
+#
+# WHAT THIS DOES
+# --------------
+# Repoints every dangling link under drive_c/users/*/ at $HOME/<name>, creating
+# the directory if needed and keeping the ownership of the profile directory.
+# Valid links and real directories are left alone.
+#
+# USAGE
+#   wine-fix-shell-folders                 # $WINEPREFIX or $HOME/.wine
+#   wine-fix-shell-folders /home/abc/.wine
+#   wine-fix-shell-folders --check         # report only, exit 1 if anything is dangling
+#   wine-fix-shell-folders --quiet         # only the summary line
+#
+# Run by 10-setup on every container start, so an old volume repairs itself.
+# Exit codes: 0 = fine or repaired, 1 = dangling links found with --check.
+#
+set -u
+
+CHECK=0
+QUIET=0
+PREFIX=""
+for arg in "$@"; do
+  case "$arg" in
+    --check) CHECK=1 ;;
+    --quiet) QUIET=1 ;;
+    -*) echo "wine-fix-shell-folders: unknown option: $arg" >&2; exit 2 ;;
+    *) PREFIX="$arg" ;;
+  esac
+done
+
+PREFIX="${PREFIX:-${WINEPREFIX:-$HOME/.wine}}"
+# $HOME may be unset when this runs early in the container's life; the prefix
+# normally lives directly under the home directory, so that is the fallback.
+HOME_DIR="${HOME:-$(dirname "$PREFIX")}"
+USERS="$PREFIX/drive_c/users"
+
+say() { [ "$QUIET" = 1 ] || echo "$@"; }
+
+if [ ! -d "$USERS" ]; then
+  say "wine-fix-shell-folders: no prefix at $PREFIX (nothing to do)"
+  exit 0
+fi
+
+fixed=0
+found=0
+
+for profile in "$USERS"/*; do
+  [ -d "$profile" ] || continue
+  for link in "$profile"/*; do
+    [ -L "$link" ] || continue
+    [ -e "$link" ] && continue                     # resolves: leave it alone
+
+    name="$(basename "$link")"
+    want="$HOME_DIR/$name"
+    found=$((found + 1))
+
+    say "[dangling] $link"
+    say "           points at : $(readlink "$link")   (does not exist)"
+    say "           should be : $want"
+    [ "$CHECK" = 1 ] && continue
+
+    [ -d "$want" ] || mkdir -p "$want"
+    ln -sfn "$want" "$link"
+    # Keep it owned like the profile directory it lives in (normally abc:abc).
+    if [ "$(id -u)" = "0" ]; then
+      owner="$(stat -c '%u:%g' "$profile" 2>/dev/null || true)"
+      [ -n "$owner" ] && chown -h "$owner" "$link" 2>/dev/null || true
+    fi
+    say "           fixed     : $link -> $(readlink "$link")"
+  done
+done
+
+if [ "$found" = 0 ]; then
+  say "wine-fix-shell-folders: shell folders resolve ($PREFIX)"
+else
+  if [ "$CHECK" = 1 ]; then
+    echo "wine-fix-shell-folders: $found dangling link(s), not modified (--check)" >&2
+    exit 1
+  fi
+  say "wine-fix-shell-folders: repaired $found dangling link(s) in $PREFIX"
+fi
+
+exit 0

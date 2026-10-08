@@ -58,13 +58,13 @@ Xvnc (:1, 初始 1280x800，之后随浏览器自适应)   ← X 服务器 + VNC
 │   ├── etc/cont-init.d/10-setup #   首次运行初始化（含默认文件升级）
 │   ├── defaults/                #   menu.xml / rc.xml / autostart（*.v1 用于安全升级比对）
 │   ├── usr/bin/                 #   start-desktop / chromium-webtop
-│   ├── usr/local/bin/           #   openbox-style（本镜像的 openbox 外观）
+│   ├── usr/local/bin/           #   openbox-style（外观）/ wine-fix-shell-folders（老卷自愈）
 │   └── usr/share/novnc/app/     #   webtop-adaptive.js（强制自适应分辨率）
 ├── docker-compose.yml           # 构建 + 运行（默认 3000，可用 .env 覆盖；BUILD_PACKAGES 追加软件）
 ├── .env.example                 # WEB_PORT / CONFIG_DIR 等可调项模板
 ├── scripts/
 │   ├── build.sh                 # 可选构建入口（传 BUILD_DATE + 别名标签）
-│   ├── verify.sh                # 一键验证（标准镜像 40 项；精简版自动跳过 wine 等）
+│   ├── verify.sh                # 一键验证（标准镜像 42 项；精简版自动跳过 wine 等）
 │   ├── chromium-regression.sh   # Chromium 菜单启动回归
 │   ├── wine-regression.sh       # Wine 回归（仅当镜像里有 wine 时才会被 verify 调用）
 │   ├── vncprobe.py              # VNC 像素探测（数颜色）
@@ -353,6 +353,55 @@ keybind: added C-S-d -> ToggleDecorations
 
 标题栏从米黄 Clearlooks 变成 Artwiz-boxed 的深灰渐变、标题居中，按钮少了最小化。
 
+## Bug 修复：老卷里悬空的 Wine shell 文件夹软链（应用闪退）
+
+**症状**：Wine 应用点开**现代**文件对话框时整个进程瞬间消失（MT5 的表现是图表右键
+→ 模板 → 加载模板，终端直接退出后自重启）。只走老式 `GetOpenFileName` 的入口
+（notepad 的打开）却正常，所以很容易误判成应用自身的问题。
+
+**根因**：Wine 建 prefix 时会把 Windows 的 shell 文件夹做成指向 `$HOME` 的软链：
+
+```
+.wine/drive_c/users/abc/Desktop -> $HOME/Desktop
+```
+
+镜像的默认家目录改过两次（`/config` → `/abc` → `/home/abc`），而 prefix 在挂载卷里
+跨过了这些改动，软链于是指向不存在的目录。Wine 的 shell 命名空间**以桌面为根**，
+解析失败后 `comdlg32` 的 `IFileDialog` 构造路径解引用了空接口指针：
+
+```
+commdlg:DllGetClassObject {DC1C5A9C-...}       CLSID_FileOpenDialog
+→ Exception C0000005 at comdlg32.dll+0x10897 (read to 0x0)
+```
+
+诊断信号（`WINEDEBUG=+shell`）：
+
+```
+SHGetFolderPathAndSubDirW returning 0x80070003 (final path is L"C:\users\abc\Desktop")
+                                       ^^^^^^^^ ERROR_PATH_NOT_FOUND
+```
+
+**修复**：镜像启动时自愈，`root/usr/local/bin/wine-fix-shell-folders` 由
+`10-setup` 在桌面起来之前调用——发现悬空链就重指到当前 `$HOME/<名字>` 并补建目录：
+
+```
+[dangling] /home/abc/.wine/drive_c/users/abc/Desktop
+           points at : /config/Desktop   (does not exist)
+           should be : /home/abc/Desktop
+           fixed     : ... -> /home/abc/Desktop
+```
+
+也可以手动用：
+
+```sh
+wine-fix-shell-folders --check            # 只检查（有问题退出码 1）
+wine-fix-shell-folders                    # 修复 $WINEPREFIX 或 ~/.wine
+```
+
+`verify.sh` 用**反例**守住它：造一个带 `/config/Desktop` 悬空链的卷，启动镜像后必须
+被改成 `/home/abc/Desktop` 且可解析；另外 `/home/abc/.wine` 里若还有任何悬空链，
+wine 段的 `--check` 会报错。
+
 ## Bug 修复：openbox 右键菜单 webbrowser 打不开 chromium
 
 ### 现象
@@ -514,7 +563,7 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
 
 实测结果（全新 volume，标准镜像）：
 
-**`alpine:openbox-novnc`**（2.07 GB = wine + xdotool + xwininfo）——**40/40 通过**（完整日志 `logs/verify-standard.log`）：
+**`alpine:openbox-novnc`**（2.07 GB = wine + xdotool + xwininfo）——**42/42 通过**（完整日志 `logs/verify-standard.log`）：
 
 ```
    [ OK ] container is running
@@ -538,6 +587,7 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
    [ OK ] C-S-d keybind present (toggles window decorations)
    [ OK ] no panel: tint2 is not installed
    [ OK ] no tint2 supervisor entry
+   [ OK ] a stale Wine shell link (/config/Desktop) is repaired at boot
    [ OK ] VNC server completed an RFB handshake
    [ OK ] framebuffer reports 1280x800
    [info] idle desktop framebuffer has 2 unique colours (panel-less: expect ~2)
@@ -565,12 +615,20 @@ PROBE_HOST=<主机IP> ./scripts/verify.sh
    [ OK ] 64-bit loader runs a Windows program (wine cmd /c ver)
    [ OK ] 32-bit WoW64 runs an i386 PE (syswow64\cmd.exe)
    [ OK ] Wine sees the image's Noto fonts (65 entries via fontconfig)
-   [ OK ] wine-webtop notepad maps a real window
+   [ OK ] wine notepad maps a real window
           window=_NET_WM_NAME(UTF8_STRING) = "Untitled - Notepad" WM_CLASS(STRING) = "notepad.exe", "notepad.exe"
+   [ OK ] the Wine prefix has no dangling shell-folder links
    [ OK ] desktop still paints after the Chromium and Wine tests (1004 unique colours)
 
- passed: 40   failed: 0
+ passed: 42   failed: 0
 ```
+
+精简构建（`BUILD_PACKAGES=""`，1.47 GB，只有 chromium + openbox + Xvnc）会自动跳过
+wine / xdotool / xwininfo 相关检查，其余同样全绿。
+
+> 这些数字要在**串行**下测得：并行跑两份验证（或在 stack 重建的同时跑）会让首启
+> Chromium 超过等待时间而误报。`verify.sh` 现在轮询最多 120 秒再判定失败。
+
 
 精简构建（`BUILD_PACKAGES=""`，1.47 GB，只有 chromium + openbox + Xvnc）会自动跳过
 wine / xdotool / xwininfo 相关检查，其余同样全绿。
